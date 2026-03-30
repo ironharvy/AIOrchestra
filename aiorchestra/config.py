@@ -1,4 +1,10 @@
-"""Configuration loader."""
+"""Configuration loader.
+
+Resolution order (each layer merges on top of the previous):
+  1. Built-in defaults
+  2. Target repo .aiorchestra/config.yaml (if repo_root provided)
+  3. Explicit --config path (if provided)
+"""
 
 from pathlib import Path
 
@@ -39,18 +45,29 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def load_config(path: str | None = None) -> dict:
-    """Load config from YAML file, falling back to defaults."""
+def _load_yaml(path: Path) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def load_config(path: str | None = None, repo_root: str | None = None) -> dict:
+    """Load config by merging defaults ← repo config ← explicit config."""
+    config = DEFAULTS.copy()
+
+    # Layer 2: target repo .aiorchestra/config.yaml
+    if repo_root:
+        repo_config = Path(repo_root) / ".aiorchestra" / "config.yaml"
+        if repo_config.exists():
+            config = _deep_merge(config, _load_yaml(repo_config))
+
+    # Layer 3: explicit --config path
     if path is None:
-        # Try common locations
         for candidate in ["aiorchestra.yaml", "aiorchestra.yml"]:
             if Path(candidate).exists():
                 path = candidate
                 break
 
     if path and Path(path).exists():
-        with open(path) as f:
-            user_config = yaml.safe_load(f) or {}
-        return _deep_merge(DEFAULTS, user_config)
+        config = _deep_merge(config, _load_yaml(Path(path)))
 
-    return DEFAULTS.copy()
+    return config
