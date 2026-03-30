@@ -4,13 +4,16 @@ import logging
 import subprocess
 
 from aiorchestra.ai.claude import invoke_claude
+from aiorchestra.templates import render_template
 
 log = logging.getLogger(__name__)
 
 
-def review(repo: str, branch: str, config: dict) -> tuple[bool, str | None]:
+def review(
+    repo: str, branch: str, config: dict, issue: dict | None = None,
+    repo_root: str | None = None,
+) -> tuple[bool, str | None]:
     """Run AI code review on the current diff. Returns (passed, feedback)."""
-    # Get the diff (deterministic)
     result = subprocess.run(
         ["git", "diff", "origin/main...HEAD"],
         capture_output=True, text=True,
@@ -21,14 +24,11 @@ def review(repo: str, branch: str, config: dict) -> tuple[bool, str | None]:
         log.warning("No diff to review.")
         return True, None
 
-    prompt = (
-        "Review the following code diff. Focus on:\n"
-        "- Bugs or logic errors\n"
-        "- Security issues\n"
-        "- Missing edge cases\n\n"
-        "If the code looks good, respond with exactly: LGTM\n"
-        "If there are issues, describe them clearly.\n\n"
-        f"```diff\n{diff}\n```"
+    number = issue["number"] if issue else 0
+    title = issue["title"] if issue else "unknown"
+
+    prompt = render_template(
+        "review", repo_root=repo_root, number=number, title=title, diff=diff,
     )
 
     review_config = config.get("review", {})
