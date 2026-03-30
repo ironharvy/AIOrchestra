@@ -81,14 +81,46 @@ ci:
   poll_interval: 30
 ```
 
+## Target repo integration
+
+Target repos can override config and templates by adding a `.aiorchestra/` directory:
+
+```
+your-project/
+├── .aiorchestra/
+│   ├── config.yaml        # Override test commands, retry limits, etc.
+│   └── templates/         # Override any prompt template
+│       └── implement.md   # Custom implementation prompt
+├── CLAUDE.md              # Agent instructions (read by Claude Code)
+└── ...
+```
+
+**Resolution order** (first found wins for templates, layered merge for config):
+
+| Layer | Templates | Config |
+|-------|-----------|--------|
+| 1. Target repo | `.aiorchestra/templates/*.md` | `.aiorchestra/config.yaml` |
+| 2. AIOrchestra defaults | `aiorchestra/templates/*.md` | Built-in `DEFAULTS` |
+
+**Built-in templates:** `implement`, `fix_validation`, `fix_ci`, `review`, `fix_review` — each uses `{variable}` placeholders filled by the pipeline.
+
+**Agent instructions** (CLAUDE.md, AGENTS.md, etc.) belong in the target repo, not AIOrchestra. They describe that codebase's conventions and are read directly by the AI agent.
+
 ## Project structure
 
 ```
 aiorchestra/
 ├── __init__.py
 ├── cli.py            # CLI entry point
-├── config.py         # Config loader
+├── config.py         # Config loader (3-layer merge)
 ├── pipeline.py       # Stage runner / state machine
+├── templates/
+│   ├── __init__.py   # Template loader with override resolution
+│   ├── implement.md  # Default implementation prompt
+│   ├── fix_validation.md
+│   ├── fix_ci.md
+│   ├── review.md
+│   └── fix_review.md
 ├── stages/
 │   ├── __init__.py
 │   ├── discover.py   # Find labeled issues
@@ -100,7 +132,7 @@ aiorchestra/
 │   └── review.py     # AI code review
 └── ai/
     ├── __init__.py
-    └── claude.py     # Claude Code CLI + API wrapper
+    └── claude.py     # Claude Code CLI wrapper
 ```
 
 ## Design principles

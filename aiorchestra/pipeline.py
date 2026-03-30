@@ -9,6 +9,7 @@ from aiorchestra.stages.validate import validate
 from aiorchestra.stages.publish import publish
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.review import review
+from aiorchestra.templates import render_template
 
 log = logging.getLogger(__name__)
 
@@ -21,12 +22,14 @@ class Pipeline:
         config: dict,
         issue_number: int | None = None,
         dry_run: bool = False,
+        repo_root: str | None = None,
     ):
         self.repo = repo
         self.label = label
         self.issue_number = issue_number
         self.config = config
         self.dry_run = dry_run
+        self.repo_root = repo_root
         self.max_retries = config.get("ai", {}).get("max_retries", 3)
 
     def run(self) -> int:
@@ -61,7 +64,8 @@ class Pipeline:
             log.info("Implementation attempt %d/%d", attempt, self.max_retries)
 
             errors = None if attempt == 1 else validation_errors
-            if not implement(issue, self.config, previous_errors=errors):
+            if not implement(issue, self.config, previous_errors=errors,
+                             repo_root=self.repo_root):
                 return False
 
             ok, validation_errors = validate(self.config)
@@ -83,7 +87,17 @@ class Pipeline:
                 if ok:
                     break
                 log.info("CI failed, attempt %d/%d", attempt, self.max_retries)
-                if not implement(issue, self.config, previous_errors=ci_output):
+
+                ci_prompt_errors = render_template(
+                    "fix_ci",
+                    repo_root=self.repo_root,
+                    number=issue["number"],
+                    title=issue["title"],
+                    body=issue.get("body", ""),
+                    errors=ci_output,
+                )
+                if not implement(issue, self.config, previous_errors=ci_prompt_errors,
+                                 repo_root=self.repo_root):
                     return False
             else:
                 log.error("CI failed after %d attempts", self.max_retries)
@@ -92,11 +106,22 @@ class Pipeline:
         # Stage 5: Review (AI) + fix loop
         if self.config.get("review", {}).get("enabled", True):
             for attempt in range(1, self.max_retries + 1):
-                ok, feedback = review(self.repo, branch, self.config)
+                ok, feedback = review(self.repo, branch, self.config, issue=issue,
+                                      repo_root=self.repo_root)
                 if ok:
                     break
                 log.info("Review flagged issues, attempt %d/%d", attempt, self.max_retries)
-                if not implement(issue, self.config, previous_errors=feedback):
+
+                review_errors = render_template(
+                    "fix_review",
+                    repo_root=self.repo_root,
+                    number=issue["number"],
+                    title=issue["title"],
+                    body=issue.get("body", ""),
+                    errors=feedback,
+                )
+                if not implement(issue, self.config, previous_errors=review_errors,
+                                 repo_root=self.repo_root):
                     return False
             else:
                 log.error("Review failed after %d attempts", self.max_retries)
