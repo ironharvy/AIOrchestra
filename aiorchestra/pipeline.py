@@ -1,6 +1,7 @@
 """Pipeline — the state machine that drives each issue through stages."""
 
 import logging
+import os
 
 from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.prepare import prepare_environment
@@ -22,14 +23,14 @@ class Pipeline:
         config: dict,
         issue_number: int | None = None,
         dry_run: bool = False,
-        repo_root: str | None = None,
+        workspace: str | None = None,
     ):
         self.repo = repo
         self.label = label
         self.issue_number = issue_number
         self.config = config
         self.dry_run = dry_run
-        self.repo_root = repo_root
+        self.workspace = workspace
         self.max_retries = config.get("ai", {}).get("max_retries", 3)
 
     def run(self) -> int:
@@ -56,16 +57,22 @@ class Pipeline:
         branch = f"{self.config.get('branch_prefix', 'auto/')}{issue['number']}"
 
         # Stage 1: Prepare environment (deterministic)
-        if not prepare_environment(self.repo, branch):
+        repo_root = prepare_environment(self.repo, branch, self.workspace)
+        if not repo_root:
             return False
 
+        # All subsequent commands run inside the target repo
+        os.chdir(repo_root)
+        log.info("Working in %s", repo_root)
+
         # Stage 2: Implement (AI) + Validate (deterministic), with retries
+        validation_errors = None
         for attempt in range(1, self.max_retries + 1):
             log.info("Implementation attempt %d/%d", attempt, self.max_retries)
 
             errors = None if attempt == 1 else validation_errors
             if not implement(issue, self.config, previous_errors=errors,
-                             repo_root=self.repo_root):
+                             repo_root=repo_root):
                 return False
 
             ok, validation_errors = validate(self.config)
@@ -90,14 +97,14 @@ class Pipeline:
 
                 ci_prompt_errors = render_template(
                     "fix_ci",
-                    repo_root=self.repo_root,
+                    repo_root=repo_root,
                     number=issue["number"],
                     title=issue["title"],
                     body=issue.get("body", ""),
                     errors=ci_output,
                 )
                 if not implement(issue, self.config, previous_errors=ci_prompt_errors,
-                                 repo_root=self.repo_root):
+                                 repo_root=repo_root):
                     return False
             else:
                 log.error("CI failed after %d attempts", self.max_retries)
@@ -107,21 +114,21 @@ class Pipeline:
         if self.config.get("review", {}).get("enabled", True):
             for attempt in range(1, self.max_retries + 1):
                 ok, feedback = review(self.repo, branch, self.config, issue=issue,
-                                      repo_root=self.repo_root)
+                                      repo_root=repo_root)
                 if ok:
                     break
                 log.info("Review flagged issues, attempt %d/%d", attempt, self.max_retries)
 
                 review_errors = render_template(
                     "fix_review",
-                    repo_root=self.repo_root,
+                    repo_root=repo_root,
                     number=issue["number"],
                     title=issue["title"],
                     body=issue.get("body", ""),
                     errors=feedback,
                 )
                 if not implement(issue, self.config, previous_errors=review_errors,
-                                 repo_root=self.repo_root):
+                                 repo_root=repo_root):
                     return False
             else:
                 log.error("Review failed after %d attempts", self.max_retries)
