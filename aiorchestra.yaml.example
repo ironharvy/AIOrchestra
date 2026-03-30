@@ -1,0 +1,23 @@
+# AIOrchestra configuration
+# Copy this to aiorchestra.yaml and adjust for your project.
+
+label: "claude"
+branch_prefix: "auto/"
+
+ai:
+  provider: "claude-code"   # uses the `claude` CLI
+  model: "sonnet"           # model hint for --model flag
+  max_retries: 3
+
+test:
+  command: "pytest"
+  lint_command: "ruff check ."
+
+review:
+  enabled: true
+  provider: "claude-code"
+
+ci:
+  enabled: true
+  timeout: 600
+  poll_interval: 30
