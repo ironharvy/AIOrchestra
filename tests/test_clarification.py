@@ -221,7 +221,9 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
 
     clarification_msg = "Should this be sync or async?"
 
-    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""):
+    def fake_implement(
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+    ):
         calls.append(("implement", issue["number"]))
         if issue["number"] == 10:
             return InvokeResult(
@@ -299,7 +301,9 @@ def test_pipeline_process_issue_returns_deferred(monkeypatch, tmp_path):
         },
     )
 
-    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""):
+    def fake_implement(
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+    ):
         return InvokeResult(
             success=True,
             needs_clarification=True,

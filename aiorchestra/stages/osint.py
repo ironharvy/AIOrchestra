@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 # Built-in OSINT collectors
 # ------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class CollectorResult:
     """Output of a single OSINT collector."""
@@ -70,10 +71,17 @@ _IPV4_RE = re.compile(
 )
 
 # Domains to ignore when extracting targets from issue text.
-_IGNORE_DOMAINS = frozenset({
-    "github.com", "example.com", "example.org", "example.net",
-    "localhost", "google.com", "githubusercontent.com",
-})
+_IGNORE_DOMAINS = frozenset(
+    {
+        "github.com",
+        "example.com",
+        "example.org",
+        "example.net",
+        "localhost",
+        "google.com",
+        "githubusercontent.com",
+    }
+)
 
 
 def extract_targets(text: str) -> list[str]:
@@ -97,6 +105,7 @@ def extract_targets(text: str) -> list[str]:
 # Individual collectors (each wraps one shell tool)
 # ------------------------------------------------------------------
 
+
 def _run_collector(
     name: str,
     cmd: list[str],
@@ -113,10 +122,16 @@ def _run_collector(
     if result.returncode != 0:
         log.warning("%s failed for %s: %s", name, target, result.stderr.strip())
         return CollectorResult(
-            name=name, target=target, raw=result.stderr, success=False,
+            name=name,
+            target=target,
+            raw=result.stderr,
+            success=False,
         )
     return CollectorResult(
-        name=name, target=target, raw=result.stdout, success=True,
+        name=name,
+        target=target,
+        raw=result.stdout,
+        success=True,
     )
 
 
@@ -181,6 +196,7 @@ DEFAULT_COLLECTORS = ["whois", "dig", "dig-mx", "dig-ns", "dig-txt", "host", "ht
 # Orchestration
 # ------------------------------------------------------------------
 
+
 def _pick_collectors(osint_config: dict) -> list[str]:
     """Determine which collectors to run from config."""
     enabled = osint_config.get("collectors", DEFAULT_COLLECTORS)
@@ -207,8 +223,11 @@ def gather(
         log.warning("OSINT: no valid collectors configured")
         return OsintReport()
 
-    log.info("OSINT: gathering data for %d target(s) with %d collector(s)",
-             len(targets), len(collector_names))
+    log.info(
+        "OSINT: gathering data for %d target(s) with %d collector(s)",
+        len(targets),
+        len(collector_names),
+    )
 
     report = OsintReport()
     for target in targets:
@@ -238,8 +257,7 @@ def _summarise(raw_text: str, ollama_config: dict) -> str:
     prompt = render_template("osint_summarize", raw_osint=raw_text)
     result = invoke_ollama(prompt, ollama_config)
     if result:
-        log.info("OSINT: summarised %d bytes → %d bytes",
-                 len(raw_text), len(result))
+        log.info("OSINT: summarised %d bytes → %d bytes", len(raw_text), len(result))
         return result
     log.warning("OSINT: summarisation failed — falling back to raw output")
     return ""
@@ -248,6 +266,7 @@ def _summarise(raw_text: str, ollama_config: dict) -> str:
 # ------------------------------------------------------------------
 # Stage entry point (called by the pipeline)
 # ------------------------------------------------------------------
+
 
 def enrich_issue(
     issue: IssueData,

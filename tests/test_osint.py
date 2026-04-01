@@ -16,6 +16,7 @@ from aiorchestra.stages.osint import (
 # Target extraction
 # ------------------------------------------------------------------
 
+
 class TestExtractTargets:
     def test_extracts_domains(self):
         text = "Please scan example-target.org and check api.example-target.org"
@@ -50,11 +51,14 @@ class TestExtractTargets:
 # OsintReport
 # ------------------------------------------------------------------
 
+
 class TestOsintReport:
     def test_has_data_with_results(self):
-        report = OsintReport(results=[
-            CollectorResult(name="whois", target="t.io", raw="data", success=True),
-        ])
+        report = OsintReport(
+            results=[
+                CollectorResult(name="whois", target="t.io", raw="data", success=True),
+            ]
+        )
         assert report.has_data is True
 
     def test_has_data_empty(self):
@@ -62,17 +66,21 @@ class TestOsintReport:
         assert report.has_data is False
 
     def test_has_data_all_failed(self):
-        report = OsintReport(results=[
-            CollectorResult(name="whois", target="t.io", raw="", success=False),
-        ])
+        report = OsintReport(
+            results=[
+                CollectorResult(name="whois", target="t.io", raw="", success=False),
+            ]
+        )
         assert report.has_data is False
 
     def test_raw_text(self):
-        report = OsintReport(results=[
-            CollectorResult(name="whois", target="t.io", raw="registrar: X", success=True),
-            CollectorResult(name="dig", target="t.io", raw="1.2.3.4", success=True),
-            CollectorResult(name="nmap", target="t.io", raw="", success=False),
-        ])
+        report = OsintReport(
+            results=[
+                CollectorResult(name="whois", target="t.io", raw="registrar: X", success=True),
+                CollectorResult(name="dig", target="t.io", raw="1.2.3.4", success=True),
+                CollectorResult(name="nmap", target="t.io", raw="", success=False),
+            ]
+        )
         raw = report.raw_text()
         assert "whois" in raw
         assert "registrar: X" in raw
@@ -97,6 +105,7 @@ class TestOsintReport:
 # Collector picking
 # ------------------------------------------------------------------
 
+
 class TestPickCollectors:
     def test_defaults(self):
         result = _pick_collectors({})
@@ -119,6 +128,7 @@ class TestPickCollectors:
 # ------------------------------------------------------------------
 # Gather (integration with mocked shell)
 # ------------------------------------------------------------------
+
 
 def test_gather_no_targets():
     report = gather([], {})
@@ -178,6 +188,7 @@ def test_gather_with_ollama_summary(monkeypatch):
 # ------------------------------------------------------------------
 # enrich_issue (stage entry point)
 # ------------------------------------------------------------------
+
 
 def test_enrich_issue_disabled():
     """Returns empty string when OSINT is disabled."""

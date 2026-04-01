@@ -34,8 +34,13 @@ DEFAULTS = {
     "osint": {
         "enabled": False,
         "collectors": [
-            "whois", "dig", "dig-mx", "dig-ns", "dig-txt",
-            "host", "http-headers",
+            "whois",
+            "dig",
+            "dig-mx",
+            "dig-ns",
+            "dig-txt",
+            "host",
+            "http-headers",
         ],
         "targets": [],  # auto-extracted from issue text when empty
         "ollama": {

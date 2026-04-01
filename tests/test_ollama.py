@@ -71,6 +71,7 @@ def test_invoke_ollama_network_error(monkeypatch):
 
 def test_invoke_ollama_empty_response(monkeypatch):
     """Empty model response returns None."""
+
     def fake_urlopen(req, timeout=None):
         return FakeResponse(json.dumps({"response": ""}).encode())
 
@@ -82,6 +83,7 @@ def test_invoke_ollama_empty_response(monkeypatch):
 
 def test_invoke_ollama_timeout(monkeypatch):
     """Timeout returns None."""
+
     def fake_urlopen(req, timeout=None):
         raise TimeoutError()
 
