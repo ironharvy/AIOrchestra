@@ -156,6 +156,7 @@ def test_ci_fix_revalidates_and_republishes(monkeypatch, tmp_path):
 # Invariant tests
 # ---------------------------------------------------------------------------
 
+
 def test_no_changes_after_implement_aborts_immediately(monkeypatch, tmp_path):
     """Invariant 2: never proceed past implementation with zero file changes.
 

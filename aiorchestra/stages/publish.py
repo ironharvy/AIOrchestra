@@ -23,9 +23,7 @@ def publish(
     # Invariant 3: never push a branch with zero commits ahead of the base.
     # Invariant 4: never create a PR with an empty diff.
     if not _has_commits_ahead(repo_root):
-        log.error(
-            "Nothing to publish — branch has no changes relative to main"
-        )
+        log.error("Nothing to publish — branch has no changes relative to main")
         return None
 
     if not _push_branch(branch, repo_root):
@@ -99,8 +97,7 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
 
     log.info("Creating PR for issue #%d", issue["number"])
     result = run_command(
-        ["gh", "pr", "create", "--repo", repo, "--head", branch,
-         "--title", title, "--body", body],
+        ["gh", "pr", "create", "--repo", repo, "--head", branch, "--title", title, "--body", body],
         cwd=repo_root,
         logger=log,
     )

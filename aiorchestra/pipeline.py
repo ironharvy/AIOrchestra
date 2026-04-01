@@ -29,7 +29,9 @@ _DEFERRED = "deferred"
 def _has_changes(repo_root: str) -> bool:
     """Return True if the worktree has any uncommitted or staged changes."""
     result = run_command(
-        ["git", "status", "--porcelain"], cwd=repo_root, logger=log,
+        ["git", "status", "--porcelain"],
+        cwd=repo_root,
+        logger=log,
     )
     return bool(result.stdout.strip())
 
@@ -136,7 +138,9 @@ class Pipeline:
             if pid > 0:
                 # Parent — record child and move to next issue.
                 log.info(
-                    "Forked child %d for issue #%d", pid, issue["number"],
+                    "Forked child %d for issue #%d",
+                    pid,
+                    issue["number"],
                 )
                 children.append((pid, issue["number"]))
                 continue
@@ -188,7 +192,9 @@ class Pipeline:
             if exit_code != 0:
                 log.error(
                     "Child %d (issue #%d) exited with code %d",
-                    pid, number, exit_code,
+                    pid,
+                    number,
+                    exit_code,
                 )
                 failed.append(number)
             else:
@@ -300,9 +306,7 @@ class Pipeline:
             # Invariant 2: never proceed past implementation with zero file
             # changes.  Validation on an unmodified worktree is a false positive.
             if not _has_changes(ctx.repo_root):
-                log.error(
-                    "AI agent produced no file changes — aborting"
-                )
+                log.error("AI agent produced no file changes — aborting")
                 return False
 
             ok, validation_errors = validate(ctx.config, repo_root=ctx.repo_root)
@@ -400,7 +404,9 @@ class Pipeline:
                 ctx.issue["number"],
             )
             request_clarification(
-                ctx.repo, ctx.issue, result.clarification_message,
+                ctx.repo,
+                ctx.issue,
+                result.clarification_message,
             )
             return _DEFERRED
 

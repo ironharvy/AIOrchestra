@@ -82,17 +82,14 @@ def discover_issues(
         return []
 
     issues = [_normalize_issue(issue) for issue in data]
-    eligible_issues = [
-        issue for issue in issues if required_label in issue.get("labels", [])
-    ]
+    eligible_issues = [issue for issue in issues if required_label in issue.get("labels", [])]
     if not eligible_issues:
         log.error("No issues matched required agent label: %s", required_label)
         return []
 
     # Filter out issues that are already in progress or waiting on a human.
     ready_issues = [
-        issue for issue in eligible_issues
-        if not SKIP_LABELS.intersection(issue.get("labels", []))
+        issue for issue in eligible_issues if not SKIP_LABELS.intersection(issue.get("labels", []))
     ]
     skipped = len(eligible_issues) - len(ready_issues)
     if skipped:
