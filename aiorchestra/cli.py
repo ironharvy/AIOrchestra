@@ -1,9 +1,9 @@
 """CLI entry point for AIOrchestra."""
 
 import argparse
-import logging
 import sys
 
+from aiorchestra._logging import setup_logging
 from aiorchestra.config import load_config
 from aiorchestra.dispatcher import Dispatcher
 from aiorchestra.pipeline import Pipeline
@@ -53,11 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    logging.basicConfig(
-        level=logging.DEBUG if getattr(args, "verbose", False) else logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    setup_logging(verbose=getattr(args, "verbose", False))
 
     if args.command == "run":
         config = load_config(args.config)
