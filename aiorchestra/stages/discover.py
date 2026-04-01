@@ -7,6 +7,7 @@ import time
 
 from aiorchestra.agents import normalize_agent_family
 from aiorchestra.stages._shell import run_command
+from aiorchestra.stages.labels import SKIP_LABELS
 from aiorchestra.stages.types import IssueData
 
 log = logging.getLogger(__name__)
@@ -88,8 +89,23 @@ def discover_issues(
         log.error("No issues matched required agent label: %s", required_label)
         return []
 
-    log.info("Found %d issue(s)", len(eligible_issues))
-    return eligible_issues
+    # Filter out issues that are already in progress or waiting on a human.
+    ready_issues = [
+        issue for issue in eligible_issues
+        if not SKIP_LABELS.intersection(issue.get("labels", []))
+    ]
+    skipped = len(eligible_issues) - len(ready_issues)
+    if skipped:
+        log.info(
+            "Skipping %d issue(s) (in-progress or pending clarification)",
+            skipped,
+        )
+    if not ready_issues:
+        log.info("All matching issues are in-progress or waiting for clarification")
+        return []
+
+    log.info("Found %d issue(s)", len(ready_issues))
+    return ready_issues
 
 
 def _normalize_issue(issue: dict) -> IssueData:

@@ -35,14 +35,14 @@ def review(
     review_config = config.get("review", {})
     ai_config = {**config.get("ai", {}), **review_config}
 
-    output = invoke_claude(prompt, ai_config, capture_output=True, cwd=repo_root)
+    result = invoke_claude(prompt, ai_config, capture_output=True, cwd=repo_root)
 
-    if output is None:
+    if not result.success:
         return False, "Review invocation failed."
 
-    if "LGTM" in output:
+    if "LGTM" in result.output:
         log.info("Review passed.")
         return True, None
 
     log.info("Review flagged issues.")
-    return False, output
+    return False, result.output

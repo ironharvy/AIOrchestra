@@ -3,15 +3,20 @@
 The pipeline uses a few distinct stage contracts rather than one generic
 ``Stage.run()`` interface:
 
-- implement stages return ``bool`` to signal whether the AI invocation itself
-  succeeded.
+- implement stages return an ``InvokeResult`` carrying success/failure
+  *and* optional clarification metadata.
 - validation and remote-check stages return ``(passed, feedback)`` so the
   pipeline can feed failure output back into remediation prompts.
 - publish stages return a PR URL once local changes have been committed and
   pushed.
 """
 
-from typing import Any, Protocol, TypeAlias, TypedDict
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Protocol, TypeAlias, TypedDict
+
+if TYPE_CHECKING:
+    from aiorchestra.ai.claude import InvokeResult
 
 
 class _RequiredIssueData(TypedDict):
@@ -40,7 +45,7 @@ class ImplementFn(Protocol):
         prompt_name: str = "implement",
         error_text: str | None = None,
         repo_root: str | None = None,
-    ) -> bool: ...
+    ) -> InvokeResult: ...
 
 
 class ValidationFn(Protocol):

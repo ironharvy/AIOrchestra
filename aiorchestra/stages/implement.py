@@ -1,8 +1,10 @@
 """Implementation stage — this is where AI tokens are spent."""
 
+from __future__ import annotations
+
 import logging
 
-from aiorchestra.ai.claude import invoke_claude
+from aiorchestra.ai.claude import InvokeResult, invoke_claude
 from aiorchestra.stages.types import IssueData, PipelineConfig
 from aiorchestra.templates import render_template
 
@@ -37,8 +39,8 @@ def implement(
     prompt_name: str = "implement",
     error_text: str | None = None,
     repo_root: str | None = None,
-) -> bool:
-    """Invoke the AI to implement changes. Returns True on success."""
+) -> InvokeResult:
+    """Invoke the AI to implement changes. Returns an ``InvokeResult``."""
     prompt = _build_prompt(issue, prompt_name, repo_root, error_text)
     log.debug("Prompt: %s", prompt)
     ai_config = config.get("ai", {})
@@ -47,6 +49,6 @@ def implement(
     log.info("Invoking %s agent...", provider)
     if provider == "claude-code":
         return invoke_claude(prompt, ai_config, cwd=repo_root)
-    else:
-        log.error("Unknown AI provider: %s", provider)
-        return False
+
+    log.error("Unknown AI provider: %s", provider)
+    return InvokeResult(success=False)

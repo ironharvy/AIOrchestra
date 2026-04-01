@@ -215,8 +215,9 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
 
     def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
+        from aiorchestra.ai.claude import InvokeResult
         calls.append(("implement", issue["number"]))
-        return True
+        return InvokeResult(success=True)
 
     def fake_validate(config, repo_root=None):
         return True, None
@@ -229,10 +230,14 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.validate", fake_validate)
     monkeypatch.setattr("aiorchestra.pipeline.publish", fake_publish)
 
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
+    monkeypatch.setattr("aiorchestra.pipeline.remove_label", lambda repo, number, label: True)
+
     pipeline = Pipeline(
         repo="owner/repo",
         label="claude",
         config={"ai": {"provider": "claude-code"}},
+        parallel=False,
     )
 
     pre_issues = [

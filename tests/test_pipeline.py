@@ -4,6 +4,7 @@ import logging
 import os
 import types
 
+from aiorchestra.ai.claude import InvokeResult
 from aiorchestra.pipeline import Pipeline
 
 
@@ -61,7 +62,7 @@ def test_validation_retry_uses_fix_validation_prompt(monkeypatch, tmp_path):
 
     def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
         calls.append(("implement", prompt_name, error_text, repo_root))
-        return True
+        return InvokeResult(success=True)
 
     def fake_validate(config, repo_root=None):
         calls.append(("validate", repo_root))
@@ -113,7 +114,7 @@ def test_ci_fix_revalidates_and_republishes(monkeypatch, tmp_path):
 
     def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
         calls.append(("implement", prompt_name, error_text, repo_root))
-        return True
+        return InvokeResult(success=True)
 
     def fake_validate(config, repo_root=None):
         calls.append(("validate", repo_root))
@@ -179,7 +180,7 @@ def test_no_changes_after_implement_aborts_immediately(monkeypatch, tmp_path):
 
     def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
         calls.append(("implement", prompt_name, error_text, repo_root))
-        return True
+        return InvokeResult(success=True)
 
     def fake_validate(config, repo_root=None):
         calls.append(("validate", repo_root))
@@ -299,7 +300,7 @@ def test_invoke_claude_refuses_without_permissions(monkeypatch, caplog):
             capture_output=False,
         )
 
-    assert result is False
+    assert result.success is False
     assert not cli_invoked
     assert any("no file-editing permissions" in r.message for r in caplog.records)
 
