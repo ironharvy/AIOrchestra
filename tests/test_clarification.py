@@ -1,12 +1,14 @@
-"""Tests for the agent clarification / deferral flow."""
+"""Tests for the agent clarification / deferral flow and issue lifecycle."""
 
 import json
+import os
 import subprocess
 import types
 
 from aiorchestra.ai.claude import InvokeResult, _parse_clarification
 from aiorchestra.pipeline import Pipeline, _DEFERRED
 from aiorchestra.stages.clarification import CLARIFICATION_LABEL
+from aiorchestra.stages.labels import LABEL_WORKING
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +129,7 @@ def test_discover_returns_empty_when_all_need_clarification(monkeypatch):
 
 def test_request_clarification_posts_comment_and_label(monkeypatch):
     from aiorchestra.stages import clarification as clar_mod
+    from aiorchestra.stages import labels as labels_mod
     from aiorchestra.stages.clarification import request_clarification
 
     gh_calls = []
@@ -136,6 +139,7 @@ def test_request_clarification_posts_comment_and_label(monkeypatch):
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(clar_mod, "run_command", fake_run)
+    monkeypatch.setattr(labels_mod, "run_command", fake_run)
 
     ok = request_clarification(
         "owner/repo",
@@ -159,6 +163,7 @@ def test_request_clarification_posts_comment_and_label(monkeypatch):
 
 def test_request_clarification_returns_false_on_comment_failure(monkeypatch):
     from aiorchestra.stages import clarification as clar_mod
+    from aiorchestra.stages import labels as labels_mod
     from aiorchestra.stages.clarification import request_clarification
 
     def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
@@ -167,6 +172,7 @@ def test_request_clarification_returns_false_on_comment_failure(monkeypatch):
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(clar_mod, "run_command", fake_run)
+    monkeypatch.setattr(labels_mod, "run_command", fake_run)
 
     ok = request_clarification(
         "owner/repo",
@@ -232,11 +238,14 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
         "aiorchestra.pipeline.request_clarification",
         fake_request_clarification,
     )
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
+    monkeypatch.setattr("aiorchestra.pipeline.remove_label", lambda repo, number, label: True)
 
     pipeline = Pipeline(
         repo="owner/repo",
         label="claude",
         config={"ai": {"provider": "claude-code"}},
+        parallel=False,
     )
 
     issues = [
@@ -292,3 +301,251 @@ def test_pipeline_process_issue_returns_deferred(monkeypatch, tmp_path):
 
     result = pipeline._process_issue({"number": 1, "title": "Test"})
     assert result == _DEFERRED
+
+
+# ---------------------------------------------------------------------------
+# discover: agent-working exclusion
+# ---------------------------------------------------------------------------
+
+def test_discover_excludes_agent_working_issues(monkeypatch):
+    from aiorchestra.stages.discover import discover_issues
+
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 1,
+                    "title": "Available",
+                    "body": "",
+                    "labels": [{"name": "claude"}],
+                    "assignees": [],
+                },
+                {
+                    "number": 2,
+                    "title": "Already being worked on",
+                    "body": "",
+                    "labels": [
+                        {"name": "claude"},
+                        {"name": LABEL_WORKING},
+                    ],
+                    "assignees": [],
+                },
+                {
+                    "number": 3,
+                    "title": "Waiting for human",
+                    "body": "",
+                    "labels": [
+                        {"name": "claude"},
+                        {"name": CLARIFICATION_LABEL},
+                    ],
+                    "assignees": [],
+                },
+            ]
+        ),
+    )
+
+    issues = discover_issues(
+        "owner/repo", "claude", agent_label="claude", retries=1, delay=0,
+    )
+
+    assert len(issues) == 1
+    assert issues[0]["number"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Label lifecycle: _claim_and_process (sequential mode)
+# ---------------------------------------------------------------------------
+
+def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
+    """In sequential mode, _claim_and_process should add agent-working before
+    processing and remove it after, regardless of outcome."""
+    label_ops = []
+
+    def track_add(repo, number, label):
+        label_ops.append(("add", number, label))
+        return True
+
+    def track_remove(repo, number, label):
+        label_ops.append(("remove", number, label))
+        return True
+
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", track_add)
+    monkeypatch.setattr("aiorchestra.pipeline.remove_label", track_remove)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.implement",
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None:
+            InvokeResult(success=True),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.validate",
+        lambda config, repo_root=None: (True, None),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: "https://example.test/pr/1",
+    )
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        parallel=False,
+    )
+
+    assert pipeline.run(issues=[{"number": 7, "title": "Test"}]) == 0
+
+    assert ("add", 7, LABEL_WORKING) in label_ops
+    assert ("remove", 7, LABEL_WORKING) in label_ops
+    # add must come before remove
+    add_idx = label_ops.index(("add", 7, LABEL_WORKING))
+    remove_idx = label_ops.index(("remove", 7, LABEL_WORKING))
+    assert add_idx < remove_idx
+
+
+def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
+    """agent-working label must be removed even when the issue fails."""
+    label_ops = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.add_label",
+        lambda repo, number, label: label_ops.append(("add", number, label)) or True,
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.remove_label",
+        lambda repo, number, label: label_ops.append(("remove", number, label)) or True,
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.implement",
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None:
+            InvokeResult(success=False),
+    )
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        parallel=False,
+    )
+
+    # Failure return code
+    assert pipeline.run(issues=[{"number": 5, "title": "Broken"}]) == 1
+
+    # Label was still cleaned up
+    assert ("add", 5, LABEL_WORKING) in label_ops
+    assert ("remove", 5, LABEL_WORKING) in label_ops
+
+
+# ---------------------------------------------------------------------------
+# Parallel mode: fork-per-issue
+# ---------------------------------------------------------------------------
+
+def test_parallel_mode_forks_per_issue(monkeypatch, tmp_path):
+    """In parallel mode, each issue gets its own child process."""
+    forked_issues = []
+    waited_pids = []
+
+    # Simulate fork: return a fake pid to the parent
+    fake_pid = iter([100, 200])
+
+    def fake_fork():
+        pid = next(fake_pid)
+        forked_issues.append(pid)
+        return pid  # always parent path
+
+    def fake_waitpid(pid, flags):
+        waited_pids.append(pid)
+        # Return (pid, status=0) — child succeeded
+        return pid, 0
+
+    monkeypatch.setattr(os, "fork", fake_fork)
+    monkeypatch.setattr(os, "waitpid", fake_waitpid)
+    monkeypatch.setattr(os, "waitstatus_to_exitcode", lambda status: status)
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        parallel=True,
+    )
+
+    issues = [
+        {"number": 10, "title": "Issue A"},
+        {"number": 20, "title": "Issue B"},
+    ]
+
+    result = pipeline.run(issues=issues)
+
+    assert result == 0
+    assert len(forked_issues) == 2
+    assert set(waited_pids) == {100, 200}
+
+
+def test_parallel_mode_reports_child_failure(monkeypatch, tmp_path):
+    """If a child exits non-zero, the parent should report failure."""
+    fake_pid = iter([100])
+
+    monkeypatch.setattr(os, "fork", lambda: next(fake_pid))
+    monkeypatch.setattr(os, "waitpid", lambda pid, flags: (pid, 1))
+    monkeypatch.setattr(os, "waitstatus_to_exitcode", lambda status: status)
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        parallel=True,
+    )
+
+    result = pipeline.run(issues=[{"number": 10, "title": "Failing"}])
+    assert result == 1
+
+
+def test_parallel_dry_run_does_not_fork(monkeypatch):
+    """Dry run should not fork any child processes."""
+    fork_called = False
+
+    def no_fork():
+        nonlocal fork_called
+        fork_called = True
+        return 0
+
+    monkeypatch.setattr(os, "fork", no_fork)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        parallel=True,
+        dry_run=True,
+    )
+
+    result = pipeline.run(issues=[{"number": 1, "title": "Dry"}])
+    assert result == 0
+    assert not fork_called

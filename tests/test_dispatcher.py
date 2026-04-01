@@ -230,10 +230,14 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.validate", fake_validate)
     monkeypatch.setattr("aiorchestra.pipeline.publish", fake_publish)
 
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
+    monkeypatch.setattr("aiorchestra.pipeline.remove_label", lambda repo, number, label: True)
+
     pipeline = Pipeline(
         repo="owner/repo",
         label="claude",
         config={"ai": {"provider": "claude-code"}},
+        parallel=False,
     )
 
     pre_issues = [

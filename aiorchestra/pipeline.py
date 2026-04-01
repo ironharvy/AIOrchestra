@@ -1,7 +1,10 @@
 """Pipeline — the state machine that drives each issue through stages."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 import logging
+import os
 
 from aiorchestra.agents import agent_family_from_config, build_agent_branch
 from aiorchestra.config import load_config
@@ -10,6 +13,7 @@ from aiorchestra.stages.clarification import request_clarification
 from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.implement import implement
+from aiorchestra.stages.labels import LABEL_WORKING, add_label, remove_label
 from aiorchestra.stages.prepare import prepare_environment
 from aiorchestra.stages.publish import publish
 from aiorchestra.stages.review import review
@@ -53,6 +57,7 @@ class Pipeline:
         issue_number: int | None = None,
         dry_run: bool = False,
         workspace: str | None = None,
+        parallel: bool = True,
     ):
         self.repo = repo
         self.label = label
@@ -61,6 +66,11 @@ class Pipeline:
         self.config_path = config_path
         self.dry_run = dry_run
         self.workspace = workspace
+        self.parallel = parallel
+
+    # ------------------------------------------------------------------
+    # Public entry point
+    # ------------------------------------------------------------------
 
     def run(self, issues: list[IssueData] | None = None) -> int:
         """Run the full pipeline. Returns 0 on success, 1 on failure."""
@@ -75,21 +85,144 @@ class Pipeline:
             log.info("No issues found.")
             return 0
 
+        if self.parallel:
+            return self._run_parallel(issues)
+        return self._run_sequential(issues)
+
+    # ------------------------------------------------------------------
+    # Sequential mode (original behaviour, useful for single-issue runs)
+    # ------------------------------------------------------------------
+
+    def _run_sequential(self, issues: list[IssueData]) -> int:
         for issue in issues:
             log.info("Processing issue #%d: %s", issue["number"], issue["title"])
             if self.dry_run:
                 log.info("[dry-run] Would process issue #%d", issue["number"])
                 continue
 
-            result = self._process_issue(issue)
+            result = self._claim_and_process(issue)
             if result == _DEFERRED:
-                log.info("Issue #%d deferred — waiting for clarification", issue["number"])
                 continue
             if not result:
-                log.error("Failed to process issue #%d", issue["number"])
                 return 1
 
         return 0
+
+    # ------------------------------------------------------------------
+    # Parallel mode — one forked child per issue
+    # ------------------------------------------------------------------
+
+    def _run_parallel(self, issues: list[IssueData]) -> int:
+        """Fork a child process for each issue.
+
+        The parent claims the issue (adds ``agent-working`` label), forks,
+        and moves on to the next issue.  Each child processes exactly one
+        issue and calls ``os._exit``.  The parent waits for all children
+        before returning.
+        """
+        children: list[tuple[int, int]] = []  # (pid, issue_number)
+
+        for issue in issues:
+            log.info("Processing issue #%d: %s", issue["number"], issue["title"])
+            if self.dry_run:
+                log.info("[dry-run] Would process issue #%d", issue["number"])
+                continue
+
+            # Claim before forking so discovery in other runners sees it.
+            add_label(self.repo, issue["number"], LABEL_WORKING)
+
+            pid = os.fork()
+
+            if pid > 0:
+                # Parent — record child and move to next issue.
+                log.info(
+                    "Forked child %d for issue #%d", pid, issue["number"],
+                )
+                children.append((pid, issue["number"]))
+                continue
+
+            # ---- child process ----
+            self._child_main(issue)
+            # _child_main never returns
+
+        return self._wait_for_children(children)
+
+    def _child_main(self, issue: IssueData) -> None:
+        """Entry point for a forked child — processes one issue then exits."""
+        number = issue["number"]
+        try:
+            result = self._process_issue(issue)
+
+            if result == _DEFERRED:
+                log.info("Issue #%d deferred — waiting for clarification", number)
+                # Clarification label was already applied; remove working label.
+                remove_label(self.repo, number, LABEL_WORKING)
+                os._exit(0)
+
+            if not result:
+                log.error("Failed to process issue #%d", number)
+                remove_label(self.repo, number, LABEL_WORKING)
+                os._exit(1)
+
+            # Success — issue will be closed by the PR.
+            remove_label(self.repo, number, LABEL_WORKING)
+            os._exit(0)
+
+        except Exception:
+            log.exception("Unhandled error processing issue #%d", number)
+            remove_label(self.repo, number, LABEL_WORKING)
+            os._exit(1)
+
+    @staticmethod
+    def _wait_for_children(children: list[tuple[int, int]]) -> int:
+        """Wait for all child processes. Returns 0 if all succeeded."""
+        failed = []
+        for pid, number in children:
+            try:
+                _, status = os.waitpid(pid, 0)
+                exit_code = os.waitstatus_to_exitcode(status)
+            except ChildProcessError:
+                log.warning("Child %d (issue #%d) already reaped", pid, number)
+                continue
+
+            if exit_code != 0:
+                log.error(
+                    "Child %d (issue #%d) exited with code %d",
+                    pid, number, exit_code,
+                )
+                failed.append(number)
+            else:
+                log.info("Child %d (issue #%d) completed successfully", pid, number)
+
+        if failed:
+            log.error("Issues that failed: %s", failed)
+            return 1
+        return 0
+
+    # ------------------------------------------------------------------
+    # Core issue processing (runs in the child when parallel=True)
+    # ------------------------------------------------------------------
+
+    def _claim_and_process(self, issue: IssueData) -> bool | str:
+        """Claim an issue, process it, and release the claim."""
+        number = issue["number"]
+        add_label(self.repo, number, LABEL_WORKING)
+        try:
+            result = self._process_issue(issue)
+        except Exception:
+            log.exception("Unhandled error processing issue #%d", number)
+            remove_label(self.repo, number, LABEL_WORKING)
+            return False
+
+        if result == _DEFERRED:
+            log.info("Issue #%d deferred — waiting for clarification", number)
+            remove_label(self.repo, number, LABEL_WORKING)
+            return _DEFERRED
+
+        remove_label(self.repo, number, LABEL_WORKING)
+        if not result:
+            log.error("Failed to process issue #%d", number)
+        return result
 
     def _process_issue(self, issue: IssueData) -> bool | str:
         """Process a single issue. Returns True on success, False on failure,
