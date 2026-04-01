@@ -11,7 +11,8 @@ log = logging.getLogger(__name__)
 
 # Marker the agent emits when the task description is ambiguous.
 _CLARIFICATION_RE = re.compile(
-    r"^NEEDS_CLARIFICATION:\s*(.+)", re.MULTILINE | re.DOTALL,
+    r"^NEEDS_CLARIFICATION:\s*(.+)",
+    re.MULTILINE | re.DOTALL,
 )
 
 
@@ -78,8 +79,7 @@ def _invoke_cli(
 
     if not skip_perms and not allowed_tools:
         log.error(
-            "AI agent has no file-editing permissions — "
-            "refusing to invoke without tool access"
+            "AI agent has no file-editing permissions — refusing to invoke without tool access"
         )
         return InvokeResult(success=False)
 

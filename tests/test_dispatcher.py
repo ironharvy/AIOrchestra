@@ -9,6 +9,7 @@ from aiorchestra.dispatcher import Dispatcher
 # resolve_agent
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_agent_explicit_claude():
     assert resolve_agent(["aiorchestra", "claude"]) == "claude"
 
@@ -48,6 +49,7 @@ def test_resolve_agent_empty_labels():
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
+
 
 def test_dispatcher_no_issues_returns_zero(monkeypatch):
     monkeypatch.setattr(
@@ -160,6 +162,7 @@ def test_dispatcher_passes_config_and_flags(monkeypatch):
 # CLI dispatch subcommand
 # ---------------------------------------------------------------------------
 
+
 def test_cli_dispatch_defaults():
     parser = build_parser()
     args = parser.parse_args(["dispatch"])
@@ -174,14 +177,19 @@ def test_cli_dispatch_defaults():
 
 def test_cli_dispatch_with_flags():
     parser = build_parser()
-    args = parser.parse_args([
-        "dispatch",
-        "--owner", "myorg",
-        "--config", "custom.yaml",
-        "--workspace", "/tmp/ws",
-        "--dry-run",
-        "-v",
-    ])
+    args = parser.parse_args(
+        [
+            "dispatch",
+            "--owner",
+            "myorg",
+            "--config",
+            "custom.yaml",
+            "--workspace",
+            "/tmp/ws",
+            "--dry-run",
+            "-v",
+        ]
+    )
 
     assert args.owner == "myorg"
     assert args.config == "custom.yaml"
@@ -193,6 +201,7 @@ def test_cli_dispatch_with_flags():
 # ---------------------------------------------------------------------------
 # Pipeline.run(issues=...) — pre-supplied issues
 # ---------------------------------------------------------------------------
+
 
 def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
     """Pipeline.run(issues=...) skips discovery and processes the given issues."""
@@ -217,6 +226,7 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
 
     def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""):
         from aiorchestra.ai.claude import InvokeResult
+
         calls.append(("implement", issue["number"]))
         return InvokeResult(success=True)
 

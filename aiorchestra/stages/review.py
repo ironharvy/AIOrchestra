@@ -29,7 +29,11 @@ def review(
     title = issue["title"] if issue else "unknown"
 
     prompt = render_template(
-        "review", repo_root=repo_root, number=number, title=title, diff=diff,
+        "review",
+        repo_root=repo_root,
+        number=number,
+        title=title,
+        diff=diff,
     )
 
     review_config = config.get("review", {})

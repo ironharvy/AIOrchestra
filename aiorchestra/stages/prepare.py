@@ -57,8 +57,7 @@ def _check_disk_space(workspace_root: Path) -> None:
     free_mb = usage.free // (1024 * 1024)
     if free_mb < MIN_DISK_MB:
         raise RuntimeError(
-            f"Insufficient disk space: {free_mb} MB free, "
-            f"need at least {MIN_DISK_MB} MB"
+            f"Insufficient disk space: {free_mb} MB free, need at least {MIN_DISK_MB} MB"
         )
     log.debug("Disk space OK: %d MB free", free_mb)
 

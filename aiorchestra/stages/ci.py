@@ -51,8 +51,7 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
 
         failures = [c for c in checks if c.get("bucket") == "fail"]
         summary = "\n".join(
-            f"- {c['name']}: {c.get('state', 'unknown')} ({c.get('link', '')})"
-            for c in failures
+            f"- {c['name']}: {c.get('state', 'unknown')} ({c.get('link', '')})" for c in failures
         )
         log.warning("CI failed:\n%s", summary)
 

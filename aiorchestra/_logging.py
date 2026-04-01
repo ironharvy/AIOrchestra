@@ -6,10 +6,10 @@ import sys
 _RESET = "\033[0m"
 
 _LEVEL_COLORS = {
-    logging.DEBUG: "\033[2m",        # dim
-    logging.INFO: "\033[36m",        # cyan
-    logging.WARNING: "\033[33m",     # yellow
-    logging.ERROR: "\033[31m",       # red
+    logging.DEBUG: "\033[2m",  # dim
+    logging.INFO: "\033[36m",  # cyan
+    logging.WARNING: "\033[33m",  # yellow
+    logging.ERROR: "\033[31m",  # red
     logging.CRITICAL: "\033[1;31m",  # bold red
 }
 
@@ -29,9 +29,7 @@ class ColorFormatter(logging.Formatter):
 
         record.levelname_colored = f"{level_color}{record.levelname}{_RESET}"
         record.name_colored = f"{_NAME_COLOR}{record.name}{_RESET}"
-        record.asctime_colored = (
-            f"{_TIME_COLOR}{self.formatTime(record, self.datefmt)}{_RESET}"
-        )
+        record.asctime_colored = f"{_TIME_COLOR}{self.formatTime(record, self.datefmt)}{_RESET}"
         record.msg_colored = f"{level_color}{record.getMessage()}{_RESET}"
 
         return (

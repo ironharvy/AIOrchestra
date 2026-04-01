@@ -15,6 +15,7 @@ from aiorchestra.stages.labels import LABEL_WORKING
 # InvokeResult / parsing
 # ---------------------------------------------------------------------------
 
+
 def test_parse_clarification_detects_marker():
     text = "NEEDS_CLARIFICATION: Which database adapter should I use?"
     result = _parse_clarification(text)
@@ -53,9 +54,13 @@ def test_parse_clarification_requires_exact_marker():
 # discover: needs-clarification exclusion
 # ---------------------------------------------------------------------------
 
+
 def _completed_process(payload):
     return subprocess.CompletedProcess(
-        args=["gh"], returncode=0, stdout=json.dumps(payload), stderr="",
+        args=["gh"],
+        returncode=0,
+        stdout=json.dumps(payload),
+        stderr="",
     )
 
 
@@ -88,7 +93,11 @@ def test_discover_excludes_needs_clarification_issues(monkeypatch):
     )
 
     issues = discover_issues(
-        "owner/repo", "claude", agent_label="claude", retries=1, delay=0,
+        "owner/repo",
+        "claude",
+        agent_label="claude",
+        retries=1,
+        delay=0,
     )
 
     assert len(issues) == 1
@@ -117,7 +126,11 @@ def test_discover_returns_empty_when_all_need_clarification(monkeypatch):
     )
 
     issues = discover_issues(
-        "owner/repo", "claude", agent_label="claude", retries=1, delay=0,
+        "owner/repo",
+        "claude",
+        agent_label="claude",
+        retries=1,
+        delay=0,
     )
 
     assert issues == []
@@ -126,6 +139,7 @@ def test_discover_returns_empty_when_all_need_clarification(monkeypatch):
 # ---------------------------------------------------------------------------
 # clarification stage: comment + label
 # ---------------------------------------------------------------------------
+
 
 def test_request_clarification_posts_comment_and_label(monkeypatch):
     from aiorchestra.stages import clarification as clar_mod
@@ -186,6 +200,7 @@ def test_request_clarification_returns_false_on_comment_failure(monkeypatch):
 # Pipeline: end-to-end deferred flow
 # ---------------------------------------------------------------------------
 
+
 def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
     """When the agent requests clarification, the pipeline should defer the
     issue (not fail) and continue to the next one."""
@@ -221,7 +236,8 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
     monkeypatch.setattr(
-        "aiorchestra.pipeline.validate", lambda config, repo_root=None: (True, None),
+        "aiorchestra.pipeline.validate",
+        lambda config, repo_root=None: (True, None),
     )
     monkeypatch.setattr(
         "aiorchestra.pipeline.publish",
@@ -262,7 +278,9 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
     assert ("implement", 20) in calls
     assert len(clarification_calls) == 1
     assert clarification_calls[0] == (
-        "owner/repo", 10, clarification_msg,
+        "owner/repo",
+        10,
+        clarification_msg,
     )
 
 
@@ -309,6 +327,7 @@ def test_pipeline_process_issue_returns_deferred(monkeypatch, tmp_path):
 # discover: agent-working exclusion
 # ---------------------------------------------------------------------------
 
+
 def test_discover_excludes_agent_working_issues(monkeypatch):
     from aiorchestra.stages.discover import discover_issues
 
@@ -348,7 +367,11 @@ def test_discover_excludes_agent_working_issues(monkeypatch):
     )
 
     issues = discover_issues(
-        "owner/repo", "claude", agent_label="claude", retries=1, delay=0,
+        "owner/repo",
+        "claude",
+        agent_label="claude",
+        retries=1,
+        delay=0,
     )
 
     assert len(issues) == 1
@@ -358,6 +381,7 @@ def test_discover_excludes_agent_working_issues(monkeypatch):
 # ---------------------------------------------------------------------------
 # Label lifecycle: _claim_and_process (sequential mode)
 # ---------------------------------------------------------------------------
+
 
 def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
     """In sequential mode, _claim_and_process should add agent-working before
@@ -389,8 +413,9 @@ def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="":
-            InvokeResult(success=True),
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="": (
+            InvokeResult(success=True)
+        ),
     )
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
     monkeypatch.setattr(
@@ -445,8 +470,9 @@ def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="":
-            InvokeResult(success=False),
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="": (
+            InvokeResult(success=False)
+        ),
     )
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
@@ -468,6 +494,7 @@ def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 # Parallel mode: fork-per-issue
 # ---------------------------------------------------------------------------
+
 
 def test_parallel_mode_forks_per_issue(monkeypatch, tmp_path):
     """In parallel mode, each issue gets its own child process."""
