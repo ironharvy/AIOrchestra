@@ -13,7 +13,10 @@ def test_builtin_templates_exist():
 
 
 def test_render_template():
-    result = render_template("implement", number=42, title="Add feature", body="Details here")
+    result = render_template(
+        "implement", number=42, title="Add feature", body="Details here",
+        osint_context="",
+    )
     assert "42" in result
     assert "Add feature" in result
     assert "Details here" in result

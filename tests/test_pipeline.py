@@ -26,6 +26,7 @@ def test_prepare_issue_reloads_repo_config(monkeypatch, tmp_path):
         }
 
     monkeypatch.setattr("aiorchestra.pipeline.load_config", fake_load_config)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     pipeline = Pipeline(
         repo="owner/repo",
@@ -59,8 +60,9 @@ def test_validation_retry_uses_fix_validation_prompt(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
-    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
+    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""):
         calls.append(("implement", prompt_name, error_text, repo_root))
         return InvokeResult(success=True)
 
@@ -111,8 +113,9 @@ def test_ci_fix_revalidates_and_republishes(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
-    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
+    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""):
         calls.append(("implement", prompt_name, error_text, repo_root))
         return InvokeResult(success=True)
 
@@ -177,8 +180,9 @@ def test_no_changes_after_implement_aborts_immediately(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: False)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
-    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
+    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""):
         calls.append(("implement", prompt_name, error_text, repo_root))
         return InvokeResult(success=True)
 

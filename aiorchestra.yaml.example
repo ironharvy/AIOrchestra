@@ -20,3 +20,24 @@ ci:
   enabled: true
   timeout: 600
   poll_interval: 30
+
+# OSINT enrichment — gather external intelligence before implementation.
+# Runs shell tools locally and summarises via a local Ollama model.
+# Zero cloud AI tokens spent.
+osint:
+  enabled: false             # flip to true to activate
+  collectors:                # which tools to run (must be on PATH)
+    - whois
+    - dig
+    - dig-mx
+    - dig-ns
+    - dig-txt
+    - host
+    - http-headers
+    # - nmap-quick           # uncomment if nmap is installed
+  targets: []                # explicit targets; auto-extracted from issue text when empty
+  ollama:
+    enabled: true            # summarise raw output via local LLM
+    endpoint: "http://localhost:11434"
+    model: "mistral"         # any model that fits your GPU (e.g. llama3, phi3)
+    timeout: 120

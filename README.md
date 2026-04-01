@@ -5,19 +5,22 @@ A lightweight wrapper that orchestrates AI coding agent with deterministic shell
 ## How it works
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Discover    │────▶│  Prepare    │────▶│  Implement   │────▶│  Validate   │
-│  (gh/shell)  │     │  (git/sh)   │     │  (AI agent)  │     │  (sh/tests) │
-└─────────────┘     └─────────────┘     └──────────────┘     └──────┬──────┘
-                                              ▲                     │
-                                              └──── on failure ─────┘
+┌─────────────┐     ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Discover    │────▶│  Prepare    │────▶│  OSINT       │────▶│  Implement   │
+│  (gh/shell)  │     │  (git/sh)   │     │  (shell/LLM) │     │  (AI agent)  │
+└─────────────┘     └─────────────┘     └──────────────┘     └──────┬───────┘
                                                                     │
-                    ┌─────────────┐     ┌─────────────┐     ┌──────▼──────┐
-                    │  Review     │◀────│  CI Watch   │◀────│  Publish    │
-                    │  (AI agent) │     │  (gh/poll)  │     │  (git/gh)   │
-                    └──────┬──────┘     └──────┬──────┘     └─────────────┘
-                           │                   │
-                           └─── on failure ────┘──▶ re-invoke AI with context
+                    ┌──────────────┐                         ┌──────▼──────┐
+                    │  Validate    │◀────────────────────────│             │
+                    │  (sh/tests)  │        on failure ──────│  Implement  │
+                    └──────┬───────┘                         └─────────────┘
+                           │
+                    ┌──────▼──────┐     ┌─────────────┐     ┌─────────────┐
+                    │  Publish    │────▶│  CI Watch   │────▶│  Review     │
+                    │  (git/gh)   │     │  (gh/poll)  │     │  (AI agent) │
+                    └─────────────┘     └──────┬──────┘     └──────┬──────┘
+                                               │                   │
+                                               └─── on failure ────┘──▶ re-invoke AI with context
 ```
 
 ### Pipeline stages
@@ -26,7 +29,8 @@ A lightweight wrapper that orchestrates AI coding agent with deterministic shell
 |-------|-----------|-----|-------------|
 | **Discover** | `gh issue list --label <label>` | No | Find issues tagged for automation |
 | **Prepare** | git pull, checkout -b, venv setup | No | Set up a clean working environment |
-| **Implement** | Claude Code / API | Yes | Generate implementation from issue description |
+| **OSINT** | whois, dig, curl + Ollama | Local | Gather external intelligence about targets in the issue |
+| **Implement** | Claude Code / API | Yes | Generate implementation from issue description + OSINT context |
 | **Validate** | pytest, ruff/flake8, mypy | No | Run tests and linters locally |
 | **Publish** | git push, gh pr create | No | Create PR and push changes |
 | **CI Watch** | Poll `gh run list` | No | Wait for CI to pass |
@@ -56,6 +60,43 @@ aiorchestra run --repo owner/repo --label claude --dry-run
 Branches are created as `<agent>/<issue-number>`, for example `claude/42` or `codex/42`.
 Issues must include the normalized agent-family label derived from `ai.provider`. Assignment to an agent is optional metadata.
 
+## OSINT enrichment
+
+The optional OSINT stage runs **before** implementation to gather external intelligence about targets (domains, IPs) mentioned in the issue. It runs entirely locally — zero cloud AI tokens spent.
+
+**How it works:**
+
+1. **Extract targets** — domains and IPs are auto-extracted from the issue title/body (or configured explicitly)
+2. **Run collectors** — shell tools (whois, dig, curl, nmap, etc.) gather raw data about each target
+3. **Summarise locally** — raw output is distilled into a structured brief via a local Ollama model
+4. **Inject into prompt** — the summary is added to the implementation prompt as OSINT context
+
+**Requirements:**
+
+- OSINT tools on PATH (whois, dig, host, curl — most are pre-installed on Linux)
+- [Ollama](https://ollama.com/) running locally for summarisation (optional — falls back to raw output)
+- Any small model that fits your GPU: `mistral`, `llama3`, `phi3`, etc.
+
+**Quick start:**
+
+```yaml
+# in aiorchestra.yaml
+osint:
+  enabled: true
+  ollama:
+    model: "mistral"   # or whatever fits your GPU
+```
+
+Targets are auto-extracted from issue text. To override:
+
+```yaml
+osint:
+  enabled: true
+  targets: ["target.io", "192.168.1.1"]
+```
+
+Available collectors: `whois`, `dig`, `dig-mx`, `dig-ns`, `dig-txt`, `host`, `http-headers`, `nmap-quick`. Only tools found on PATH are executed; missing tools are silently skipped.
+
 ## Configuration
 
 Create `aiorchestra.yaml` in the target repo (or pass `--config`):
@@ -81,6 +122,16 @@ ci:
   enabled: true
   timeout: 600             # seconds to wait for CI
   poll_interval: 30
+
+osint:
+  enabled: false           # flip to true to activate
+  collectors: ["whois", "dig", "dig-mx", "dig-ns", "dig-txt", "host", "http-headers"]
+  targets: []              # auto-extracted from issue text when empty
+  ollama:
+    enabled: true
+    endpoint: "http://localhost:11434"
+    model: "mistral"       # any model that fits your GPU
+    timeout: 120
 ```
 
 ## Target repo integration
@@ -104,7 +155,7 @@ your-project/
 | 1. Target repo | `.aiorchestra/templates/*.md` | `.aiorchestra/config.yaml` |
 | 2. AIOrchestra defaults | `aiorchestra/templates/*.md` | Built-in `DEFAULTS` |
 
-**Built-in templates:** `implement`, `fix_validation`, `fix_ci`, `review`, `fix_review` — each uses `{variable}` placeholders filled by the pipeline.
+**Built-in templates:** `implement`, `fix_validation`, `fix_ci`, `review`, `fix_review`, `osint_summarize` — each uses `{variable}` placeholders filled by the pipeline.
 
 **Agent instructions** (CLAUDE.md, AGENTS.md, etc.) belong in the target repo, not AIOrchestra. They describe that codebase's conventions and are read directly by the AI agent.
 
@@ -129,6 +180,7 @@ aiorchestra/
 │   ├── __init__.py
 │   ├── discover.py   # Find labeled issues
 │   ├── prepare.py    # Git + env setup
+│   ├── osint.py      # OSINT enrichment (shell tools + Ollama)
 │   ├── implement.py  # AI implementation
 │   ├── validate.py   # Tests + linting
 │   ├── publish.py    # Push + PR creation
@@ -136,7 +188,8 @@ aiorchestra/
 │   └── review.py     # AI code review
 └── ai/
     ├── __init__.py
-    └── claude.py     # Claude Code CLI wrapper
+    ├── claude.py     # Claude Code CLI wrapper
+    └── ollama.py     # Ollama local LLM provider
 ```
 
 ## Design principles
