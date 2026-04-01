@@ -21,8 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--label", default=None, help="Issue label to filter by")
     run.add_argument("--issue", type=int, default=None, help="Specific issue number")
     run.add_argument("--config", default=None, help="Path to config YAML")
-    run.add_argument("--workspace", default=None,
-                     help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)")
+    run.add_argument(
+        "--workspace",
+        default=None,
+        help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)",
+    )
     run.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     run.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
 
@@ -31,16 +34,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Scan all owned repos for 'aiorchestra'-labeled issues",
     )
     dispatch.add_argument(
-        "--owner", default="@me",
+        "--owner",
+        default="@me",
         help="GitHub owner to scan (default: @me, i.e. the authenticated user)",
     )
     dispatch.add_argument("--config", default=None, help="Path to config YAML")
-    dispatch.add_argument("--workspace", default=None,
-                          help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)")
-    dispatch.add_argument("--dry-run", action="store_true",
-                          help="Show plan without executing")
-    dispatch.add_argument("--verbose", "-v", action="store_true",
-                          help="Verbose logging")
+    dispatch.add_argument(
+        "--workspace",
+        default=None,
+        help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)",
+    )
+    dispatch.add_argument("--dry-run", action="store_true", help="Show plan without executing")
+    dispatch.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
 
     return parser
 

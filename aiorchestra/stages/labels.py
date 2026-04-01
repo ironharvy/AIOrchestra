@@ -24,14 +24,15 @@ SKIP_LABELS: frozenset[str] = frozenset({LABEL_WORKING, LABEL_NEEDS_CLARIFICATIO
 def add_label(repo: str, issue_number: int, label: str) -> bool:
     """Add *label* to issue *issue_number*. Returns True on success."""
     result = run_command(
-        ["gh", "issue", "edit", str(issue_number), "--repo", repo,
-         "--add-label", label],
+        ["gh", "issue", "edit", str(issue_number), "--repo", repo, "--add-label", label],
         logger=log,
     )
     if result.returncode != 0:
         log.error(
             "Failed to add label '%s' to #%d: %s",
-            label, issue_number, result.stderr.strip(),
+            label,
+            issue_number,
+            result.stderr.strip(),
         )
         return False
     log.debug("Added label '%s' to #%d", label, issue_number)
@@ -41,14 +42,15 @@ def add_label(repo: str, issue_number: int, label: str) -> bool:
 def remove_label(repo: str, issue_number: int, label: str) -> bool:
     """Remove *label* from issue *issue_number*. Returns True on success."""
     result = run_command(
-        ["gh", "issue", "edit", str(issue_number), "--repo", repo,
-         "--remove-label", label],
+        ["gh", "issue", "edit", str(issue_number), "--repo", repo, "--remove-label", label],
         logger=log,
     )
     if result.returncode != 0:
         log.error(
             "Failed to remove label '%s' from #%d: %s",
-            label, issue_number, result.stderr.strip(),
+            label,
+            issue_number,
+            result.stderr.strip(),
         )
         return False
     log.debug("Removed label '%s' from #%d", label, issue_number)

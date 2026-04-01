@@ -89,6 +89,7 @@ def test_discover_issue_number_requires_matching_agent_label(monkeypatch):
 # discover_all_issues
 # ---------------------------------------------------------------------------
 
+
 def test_discover_all_groups_by_repo(monkeypatch):
     monkeypatch.setattr(
         "aiorchestra.stages.discover.run_command",
