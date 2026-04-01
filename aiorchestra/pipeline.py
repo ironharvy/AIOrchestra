@@ -11,6 +11,7 @@ from aiorchestra.config import load_config
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.clarification import request_clarification
 from aiorchestra.stages.discover import discover_issues
+from aiorchestra.stages.osint import enrich_issue
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.implement import implement
 from aiorchestra.stages.labels import LABEL_WORKING, add_label, remove_label
@@ -43,6 +44,7 @@ class _IssueContext:
     issue: IssueData
     config: PipelineConfig
     repo_root: str
+    osint_context: str = ""
 
     @property
     def max_retries(self) -> int:
@@ -271,12 +273,20 @@ class Pipeline:
 
         log.info("Working in %s", repo_root)
         config = load_config(self.config_path, repo_root=repo_root)
+
+        # OSINT enrichment — runs locally, zero cloud tokens.
+        osint_config = config.get("osint", {})
+        osint_context = enrich_issue(issue, osint_config)
+        if osint_context:
+            log.info("OSINT enrichment produced %d bytes of context", len(osint_context))
+
         return _IssueContext(
             repo=self.repo,
             branch=branch,
             issue=issue,
             config=config,
             repo_root=repo_root,
+            osint_context=osint_context,
         )
 
     def _run_validation_loop(
@@ -396,6 +406,7 @@ class Pipeline:
             prompt_name=prompt_name,
             error_text=error_text,
             repo_root=ctx.repo_root,
+            osint_context=ctx.osint_context,
         )
 
         if result.needs_clarification:

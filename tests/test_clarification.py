@@ -221,7 +221,9 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
 
     clarification_msg = "Should this be sync or async?"
 
-    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
+    def fake_implement(
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+    ):
         calls.append(("implement", issue["number"]))
         if issue["number"] == 10:
             return InvokeResult(
@@ -233,6 +235,7 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
         return InvokeResult(success=True)
 
     monkeypatch.setattr("aiorchestra.pipeline.implement", fake_implement)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
     monkeypatch.setattr(
         "aiorchestra.pipeline.validate",
@@ -298,7 +301,9 @@ def test_pipeline_process_issue_returns_deferred(monkeypatch, tmp_path):
         },
     )
 
-    def fake_implement(issue, config, prompt_name="implement", error_text=None, repo_root=None):
+    def fake_implement(
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+    ):
         return InvokeResult(
             success=True,
             needs_clarification=True,
@@ -306,6 +311,7 @@ def test_pipeline_process_issue_returns_deferred(monkeypatch, tmp_path):
         )
 
     monkeypatch.setattr("aiorchestra.pipeline.implement", fake_implement)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
     monkeypatch.setattr(
         "aiorchestra.pipeline.request_clarification",
         lambda repo, issue, msg: True,
@@ -411,10 +417,11 @@ def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None: (
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="": (
             InvokeResult(success=True)
         ),
     )
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
     monkeypatch.setattr(
         "aiorchestra.pipeline.validate",
         lambda config, repo_root=None: (True, None),
@@ -467,10 +474,11 @@ def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None: (
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="": (
             InvokeResult(success=False)
         ),
     )
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     pipeline = Pipeline(
         repo="owner/repo",
