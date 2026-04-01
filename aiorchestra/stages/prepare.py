@@ -94,7 +94,7 @@ def _install_deps(repo_dir: Path) -> None:
     cwd = str(repo_dir)
 
     run_command(
-        ["python", "-m", "pip", "install", "--upgrade", "pip"],
+        ["python3", "-m", "pip", "install", "--upgrade", "pip"],
         check=False,
         cwd=cwd,
         logger=log,

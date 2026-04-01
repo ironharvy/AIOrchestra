@@ -1,0 +1,24 @@
+---
+description: Do not overwrite, recreate, or destroy existing project infrastructure (venvs, databases, config, etc.)
+alwaysApply: true
+---
+
+# Preserve Existing Project Infrastructure
+
+Before creating, overwriting, or modifying any project infrastructure, **check if it already exists** and **do not replace it**.
+
+## What counts as infrastructure
+
+- Virtual environments (`.venv`, `venv`, `.env`)
+- Dependency lock files (`uv.lock`, `poetry.lock`, `package-lock.json`)
+- Local databases, caches, or state directories
+- Environment config (`.env`, `.envrc`, config files outside source control)
+- Docker volumes, containers, or compose state
+
+## Rules
+
+1. **Check first**: Before running any command that creates infrastructure (e.g. `python -m venv`, `npm init`, `docker compose up`), verify whether the target already exists.
+2. **Never overwrite**: If it exists, use it as-is. Do not run commands with `--clear`, `--force`, or `rm -rf` on infrastructure you did not create in this session.
+3. **Use the existing environment**: If `.venv` exists, run tools through it (`.venv/bin/python`, `.venv/bin/pytest`). Do not create a parallel environment.
+4. **Ask if broken**: If existing infrastructure appears broken or incompatible, **tell the user** and suggest a fix. Do not silently recreate it.
+5. **Stay in scope**: If your task is to change code, do not detour into fixing the dev environment. Run what you can; report what you cannot.
