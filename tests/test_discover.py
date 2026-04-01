@@ -3,7 +3,7 @@
 import json
 import subprocess
 
-from aiorchestra.stages.discover import discover_issues
+from aiorchestra.stages.discover import discover_all_issues, discover_issues
 
 
 def _completed_process(payload):
@@ -12,6 +12,15 @@ def _completed_process(payload):
         returncode=0,
         stdout=json.dumps(payload),
         stderr="",
+    )
+
+
+def _failed_process(stderr="error"):
+    return subprocess.CompletedProcess(
+        args=["gh"],
+        returncode=1,
+        stdout="",
+        stderr=stderr,
     )
 
 
@@ -74,3 +83,87 @@ def test_discover_issue_number_requires_matching_agent_label(monkeypatch):
     )
 
     assert issues == []
+
+
+# ---------------------------------------------------------------------------
+# discover_all_issues
+# ---------------------------------------------------------------------------
+
+def test_discover_all_groups_by_repo(monkeypatch):
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 1,
+                    "title": "Alpha",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}],
+                    "assignees": [],
+                    "repository": {"nameWithOwner": "owner/repo-a"},
+                },
+                {
+                    "number": 5,
+                    "title": "Beta",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}, {"name": "claude"}],
+                    "assignees": [],
+                    "repository": {"nameWithOwner": "owner/repo-b"},
+                },
+                {
+                    "number": 2,
+                    "title": "Gamma",
+                    "body": "details",
+                    "labels": [{"name": "aiorchestra"}],
+                    "assignees": [{"login": "alice"}],
+                    "repository": {"nameWithOwner": "owner/repo-a"},
+                },
+            ]
+        ),
+    )
+
+    result = discover_all_issues(owner="@me")
+
+    assert set(result.keys()) == {"owner/repo-a", "owner/repo-b"}
+    assert len(result["owner/repo-a"]) == 2
+    assert len(result["owner/repo-b"]) == 1
+    assert result["owner/repo-a"][0]["number"] == 1
+    assert result["owner/repo-a"][1]["number"] == 2
+    assert result["owner/repo-b"][0]["labels"] == ["aiorchestra", "claude"]
+
+
+def test_discover_all_returns_empty_on_no_results(monkeypatch):
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process([]),
+    )
+
+    assert discover_all_issues() == {}
+
+
+def test_discover_all_returns_empty_on_gh_failure(monkeypatch):
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _failed_process("fatal: auth required"),
+    )
+
+    assert discover_all_issues() == {}
+
+
+def test_discover_all_skips_entries_without_repository(monkeypatch):
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 1,
+                    "title": "No repo",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}],
+                    "assignees": [],
+                },
+            ]
+        ),
+    )
+
+    assert discover_all_issues() == {}

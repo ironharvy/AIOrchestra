@@ -1,9 +1,10 @@
 """Helpers for normalizing provider ids into agent-family names."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 DEFAULT_AGENT_FAMILY = "claude"
+KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "jules")
 
 
 def normalize_agent_family(value: str | None) -> str:
@@ -38,3 +39,20 @@ def agent_family_from_config(config: Mapping[str, Any]) -> str:
 def build_agent_branch(config: Mapping[str, Any], issue_number: int) -> str:
     """Build a branch name from the configured agent family."""
     return f"{agent_family_from_config(config)}/{issue_number}"
+
+
+def resolve_agent(
+    issue_labels: Sequence[str],
+    default: str = DEFAULT_AGENT_FAMILY,
+) -> str:
+    """Pick the agent family from *issue_labels*, or fall back to *default*.
+
+    Scans labels for a known agent name (claude, codex, jules).  The first
+    match wins.  If no label matches, returns *default*.
+    """
+    for label in issue_labels:
+        normalized = label.strip().lower()
+        for agent in KNOWN_AGENTS:
+            if agent in normalized:
+                return agent
+    return default

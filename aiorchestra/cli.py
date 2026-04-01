@@ -5,6 +5,7 @@ import logging
 import sys
 
 from aiorchestra.config import load_config
+from aiorchestra.dispatcher import Dispatcher
 from aiorchestra.pipeline import Pipeline
 
 
@@ -24,6 +25,22 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)")
     run.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     run.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+
+    dispatch = sub.add_parser(
+        "dispatch",
+        help="Scan all owned repos for 'aiorchestra'-labeled issues",
+    )
+    dispatch.add_argument(
+        "--owner", default="@me",
+        help="GitHub owner to scan (default: @me, i.e. the authenticated user)",
+    )
+    dispatch.add_argument("--config", default=None, help="Path to config YAML")
+    dispatch.add_argument("--workspace", default=None,
+                          help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)")
+    dispatch.add_argument("--dry-run", action="store_true",
+                          help="Show plan without executing")
+    dispatch.add_argument("--verbose", "-v", action="store_true",
+                          help="Verbose logging")
 
     return parser
 
@@ -54,6 +71,17 @@ def main(argv: list[str] | None = None) -> int:
             workspace=args.workspace,
         )
         return pipeline.run()
+
+    if args.command == "dispatch":
+        config = load_config(args.config)
+        dispatcher = Dispatcher(
+            config=config,
+            owner=args.owner,
+            config_path=args.config,
+            dry_run=args.dry_run,
+            workspace=args.workspace,
+        )
+        return dispatcher.run()
 
     return 0
 

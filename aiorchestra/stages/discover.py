@@ -1,5 +1,6 @@
 """Discover issues from GitHub by label. Pure shell — no AI tokens spent."""
 
+from collections import defaultdict
 import json
 import logging
 import time
@@ -10,6 +11,8 @@ from aiorchestra.stages.types import IssueData
 
 log = logging.getLogger(__name__)
 ISSUE_FIELDS = "number,title,body,labels,assignees"
+SEARCH_FIELDS = "number,title,body,labels,assignees,repository"
+DISPATCH_LABEL = "aiorchestra"
 
 
 def discover_issues(
@@ -117,3 +120,54 @@ def _extract_names(values: list[dict] | None, *, key: str) -> list[str]:
             normalized.append(name.strip().lower())
 
     return normalized
+
+
+def discover_all_issues(
+    owner: str = "@me",
+    label: str = DISPATCH_LABEL,
+    limit: int = 100,
+) -> dict[str, list[IssueData]]:
+    """Search for labeled issues across all repos owned by *owner*.
+
+    Returns a dict mapping ``owner/repo`` to its matching issues.
+    """
+    cmd = [
+        "gh",
+        "search",
+        "issues",
+        "--owner",
+        owner,
+        "--label",
+        label,
+        "--state",
+        "open",
+        "--json",
+        SEARCH_FIELDS,
+        "--limit",
+        str(limit),
+    ]
+
+    result = run_command(cmd, logger=log)
+    if result.returncode != 0:
+        log.error("gh search failed: %s", result.stderr.strip())
+        return {}
+
+    data = json.loads(result.stdout)
+    if not data:
+        log.info("No issues found across repos for owner=%s label=%s", owner, label)
+        return {}
+
+    grouped: dict[str, list[IssueData]] = defaultdict(list)
+    for raw in data:
+        repo_info = raw.get("repository", {})
+        repo = repo_info.get("nameWithOwner", "")
+        if not repo:
+            continue
+        grouped[repo].append(_normalize_issue(raw))
+
+    log.info(
+        "Found %d issue(s) across %d repo(s)",
+        sum(len(v) for v in grouped.values()),
+        len(grouped),
+    )
+    return dict(grouped)

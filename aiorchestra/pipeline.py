@@ -58,14 +58,15 @@ class Pipeline:
         self.dry_run = dry_run
         self.workspace = workspace
 
-    def run(self) -> int:
+    def run(self, issues: list[IssueData] | None = None) -> int:
         """Run the full pipeline. Returns 0 on success, 1 on failure."""
-        issues = discover_issues(
-            self.repo,
-            self.label,
-            self.issue_number,
-            agent_label=agent_family_from_config(self.config),
-        )
+        if issues is None:
+            issues = discover_issues(
+                self.repo,
+                self.label,
+                self.issue_number,
+                agent_label=agent_family_from_config(self.config),
+            )
         if not issues:
             log.info("No issues found.")
             return 0
