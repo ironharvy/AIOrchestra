@@ -7,6 +7,7 @@ def test_defaults_returned_when_no_file():
     config = load_config("/nonexistent/path.yaml")
     assert config["label"] == "claude"
     assert config["ai"]["max_retries"] == 3
+    assert "branch_prefix" not in config
 
 
 def test_deep_merge():

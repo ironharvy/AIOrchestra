@@ -12,7 +12,6 @@ import yaml
 
 DEFAULTS = {
     "label": "claude",
-    "branch_prefix": "auto/",
     "ai": {
         "provider": "claude-code",
         "model": "sonnet",

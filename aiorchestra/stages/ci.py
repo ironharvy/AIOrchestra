@@ -1,13 +1,15 @@
 """CI watch stage — poll for CI completion. Pure shell — no AI tokens spent."""
 
 import logging
-import subprocess
 import time
+
+from aiorchestra.stages._shell import run_command
+from aiorchestra.stages.types import FeedbackResult, PipelineConfig
 
 log = logging.getLogger(__name__)
 
 
-def wait_for_ci(pr_url: str, config: dict) -> tuple[bool, str | None]:
+def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
     """Poll CI status until completion. Returns (success, failure_output)."""
     ci_cfg = config.get("ci", {})
     timeout = ci_cfg.get("timeout", 600)
@@ -17,9 +19,9 @@ def wait_for_ci(pr_url: str, config: dict) -> tuple[bool, str | None]:
     log.info("Waiting for CI (timeout=%ds)...", timeout)
 
     while time.monotonic() < deadline:
-        result = subprocess.run(
+        result = run_command(
             ["gh", "pr", "checks", pr_url, "--json", "name,state,conclusion"],
-            capture_output=True, text=True,
+            logger=log,
         )
         if result.returncode != 0:
             log.warning("Failed to check CI status: %s", result.stderr.strip())
@@ -58,8 +60,5 @@ def wait_for_ci(pr_url: str, config: dict) -> tuple[bool, str | None]:
 
 def _fetch_failure_logs(pr_url: str) -> str:
     """Best-effort fetch of CI failure logs."""
-    result = subprocess.run(
-        ["gh", "pr", "checks", pr_url, "--fail-fast"],
-        capture_output=True, text=True,
-    )
+    result = run_command(["gh", "pr", "checks", pr_url, "--fail-fast"], logger=log)
     return result.stdout + result.stderr

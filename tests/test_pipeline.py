@@ -27,14 +27,14 @@ def test_prepare_issue_reloads_repo_config(monkeypatch, tmp_path):
     pipeline = Pipeline(
         repo="owner/repo",
         label="claude",
-        config={"branch_prefix": "auto/"},
+        config={"ai": {"provider": "claude-code"}},
         config_path="custom.yaml",
     )
 
     ctx = pipeline._prepare_issue({"number": 42, "title": "Refactor me"})
 
     assert ctx is not None
-    assert ctx.branch == "auto/42"
+    assert ctx.branch == "claude/42"
     assert calls == {"path": "custom.yaml", "repo_root": str(tmp_path)}
 
 
@@ -75,7 +75,7 @@ def test_validation_retry_uses_fix_validation_prompt(monkeypatch, tmp_path):
     pipeline = Pipeline(
         repo="owner/repo",
         label="claude",
-        config={"branch_prefix": "auto/"},
+        config={"ai": {"provider": "claude-code"}},
     )
 
     assert pipeline._process_issue({"number": 7, "title": "Fix validation loop"})
@@ -131,7 +131,7 @@ def test_ci_fix_revalidates_and_republishes(monkeypatch, tmp_path):
     pipeline = Pipeline(
         repo="owner/repo",
         label="claude",
-        config={"branch_prefix": "auto/"},
+        config={"ai": {"provider": "claude-code"}},
     )
 
     assert pipeline._process_issue({"number": 9, "title": "Fix CI loop"})

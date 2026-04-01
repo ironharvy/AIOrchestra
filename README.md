@@ -1,6 +1,6 @@
 # AIOrchestra
 
-A lightweight wrapper that orchestrates AI coding agents with deterministic shell automation. Instead of burning tokens on git commands and test runs, AIOrchestra handles the predictable work and only invokes the AI when intelligence is actually needed.
+A lightweight wrapper that orchestrates AI coding agent with deterministic shell automation. Instead of burning tokens on git commands and test runs, AIOrchestra handles the predictable work and only invokes the AI when intelligence is actually needed.
 
 ## How it works
 
@@ -53,13 +53,15 @@ aiorchestra run --repo owner/repo --issue 42
 aiorchestra run --repo owner/repo --label claude --dry-run
 ```
 
+Branches are created as `<agent>/<issue-number>`, for example `claude/42` or `codex/42`.
+Issues must include the normalized agent-family label derived from `ai.provider`. Assignment to an agent is optional metadata.
+
 ## Configuration
 
 Create `aiorchestra.yaml` in the target repo (or pass `--config`):
 
 ```yaml
 label: "claude"
-branch_prefix: "auto/"
 
 ai:
   provider: "claude-code"  # "claude-code" (CLI) or "claude-api"
@@ -105,6 +107,8 @@ your-project/
 **Built-in templates:** `implement`, `fix_validation`, `fix_ci`, `review`, `fix_review` — each uses `{variable}` placeholders filled by the pipeline.
 
 **Agent instructions** (CLAUDE.md, AGENTS.md, etc.) belong in the target repo, not AIOrchestra. They describe that codebase's conventions and are read directly by the AI agent.
+
+**Issue routing:** the active implementation provider determines the required agent-family label on issues. For example, `claude-code` and `claude-api` both require a `claude` label, while a future Codex provider would require `codex`. The optional `label` config or `--label` flag can still be used as an additional GitHub filter.
 
 ## Project structure
 

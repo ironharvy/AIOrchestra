@@ -49,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
             label=args.label or config.get("label", "claude"),
             issue_number=args.issue,
             config=config,
+            config_path=args.config,
             dry_run=args.dry_run,
             workspace=args.workspace,
         )

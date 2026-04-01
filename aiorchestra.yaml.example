@@ -2,7 +2,6 @@
 # Copy this to aiorchestra.yaml and adjust for your project.
 
 label: "claude"
-branch_prefix: "auto/"
 
 ai:
   provider: "claude-code"   # uses the `claude` CLI

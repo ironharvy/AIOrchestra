@@ -1,12 +1,14 @@
 """Validate stage — run tests and linters. Pure shell — no AI tokens spent."""
 
 import logging
-import subprocess
+
+from aiorchestra.stages._shell import run_command
+from aiorchestra.stages.types import FeedbackResult, PipelineConfig
 
 log = logging.getLogger(__name__)
 
 
-def validate(config: dict) -> tuple[bool, str | None]:
+def validate(config: PipelineConfig, repo_root: str | None = None) -> FeedbackResult:
     """Run tests and linter. Returns (success, error_output)."""
     test_cfg = config.get("test", {})
     errors = []
@@ -14,14 +16,22 @@ def validate(config: dict) -> tuple[bool, str | None]:
     # Run linter
     lint_cmd = test_cfg.get("lint_command", "ruff check .")
     log.info("Running linter: %s", lint_cmd)
-    result = subprocess.run(lint_cmd, shell=True, capture_output=True, text=True)
+    result = run_command(
+        lint_cmd,
+        cwd=repo_root,
+        logger=log,
+    )
     if result.returncode != 0:
         errors.append(f"Lint errors:\n{result.stdout}\n{result.stderr}")
 
     # Run tests
     test_cmd = test_cfg.get("command", "pytest")
     log.info("Running tests: %s", test_cmd)
-    result = subprocess.run(test_cmd, shell=True, capture_output=True, text=True)
+    result = run_command(
+        test_cmd,
+        cwd=repo_root,
+        logger=log,
+    )
     if result.returncode != 0:
         errors.append(f"Test errors:\n{result.stdout}\n{result.stderr}")
 

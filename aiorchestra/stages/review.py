@@ -1,23 +1,24 @@
 """Review stage — AI reviews the diff. This is where AI tokens are spent."""
 
 import logging
-import subprocess
 
 from aiorchestra.ai.claude import invoke_claude
+from aiorchestra.stages._shell import run_command
+from aiorchestra.stages.types import FeedbackResult, IssueData, PipelineConfig
 from aiorchestra.templates import render_template
 
 log = logging.getLogger(__name__)
 
 
 def review(
-    repo: str, branch: str, config: dict, issue: dict | None = None,
+    repo: str,
+    branch: str,
+    config: PipelineConfig,
+    issue: IssueData | None = None,
     repo_root: str | None = None,
-) -> tuple[bool, str | None]:
+) -> FeedbackResult:
     """Run AI code review on the current diff. Returns (passed, feedback)."""
-    result = subprocess.run(
-        ["git", "diff", "origin/main...HEAD"],
-        capture_output=True, text=True,
-    )
+    result = run_command(["git", "diff", "origin/main...HEAD"], cwd=repo_root, logger=log)
     diff = result.stdout
 
     if not diff.strip():
@@ -34,7 +35,7 @@ def review(
     review_config = config.get("review", {})
     ai_config = {**config.get("ai", {}), **review_config}
 
-    output = invoke_claude(prompt, ai_config, capture_output=True)
+    output = invoke_claude(prompt, ai_config, capture_output=True, cwd=repo_root)
 
     if output is None:
         return False, "Review invocation failed."

@@ -1,18 +1,33 @@
 """Pipeline — the state machine that drives each issue through stages."""
 
+from dataclasses import dataclass
 import logging
-import os
 
+from aiorchestra.agents import agent_family_from_config, build_agent_branch
+from aiorchestra.config import load_config
 from aiorchestra.stages.discover import discover_issues
-from aiorchestra.stages.prepare import prepare_environment
-from aiorchestra.stages.implement import implement
-from aiorchestra.stages.validate import validate
-from aiorchestra.stages.publish import publish
 from aiorchestra.stages.ci import wait_for_ci
+from aiorchestra.stages.implement import implement
+from aiorchestra.stages.prepare import prepare_environment
+from aiorchestra.stages.publish import publish
 from aiorchestra.stages.review import review
-from aiorchestra.templates import render_template
+from aiorchestra.stages.types import IssueData, PipelineConfig, RemoteCheckFn
+from aiorchestra.stages.validate import validate
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _IssueContext:
+    repo: str
+    branch: str
+    issue: IssueData
+    config: PipelineConfig
+    repo_root: str
+
+    @property
+    def max_retries(self) -> int:
+        return self.config.get("ai", {}).get("max_retries", 3)
 
 
 class Pipeline:
@@ -20,7 +35,8 @@ class Pipeline:
         self,
         repo: str,
         label: str,
-        config: dict,
+        config: PipelineConfig,
+        config_path: str | None = None,
         issue_number: int | None = None,
         dry_run: bool = False,
         workspace: str | None = None,
@@ -29,13 +45,18 @@ class Pipeline:
         self.label = label
         self.issue_number = issue_number
         self.config = config
+        self.config_path = config_path
         self.dry_run = dry_run
         self.workspace = workspace
-        self.max_retries = config.get("ai", {}).get("max_retries", 3)
 
     def run(self) -> int:
         """Run the full pipeline. Returns 0 on success, 1 on failure."""
-        issues = discover_issues(self.repo, self.label, self.issue_number)
+        issues = discover_issues(
+            self.repo,
+            self.label,
+            self.issue_number,
+            agent_label=agent_family_from_config(self.config),
+        )
         if not issues:
             log.info("No issues found.")
             return 0
@@ -53,86 +74,154 @@ class Pipeline:
 
         return 0
 
-    def _process_issue(self, issue: dict) -> bool:
-        branch = f"{self.config.get('branch_prefix', 'auto/')}{issue['number']}"
-
-        # Stage 1: Prepare environment (deterministic)
-        repo_root = prepare_environment(self.repo, branch, self.workspace)
-        if not repo_root:
+    def _process_issue(self, issue: IssueData) -> bool:
+        ctx = self._prepare_issue(issue)
+        if ctx is None:
             return False
 
-        # All subsequent commands run inside the target repo
-        os.chdir(repo_root)
-        log.info("Working in %s", repo_root)
-
-        # Stage 2: Implement (AI) + Validate (deterministic), with retries
-        validation_errors = None
-        for attempt in range(1, self.max_retries + 1):
-            log.info("Implementation attempt %d/%d", attempt, self.max_retries)
-
-            errors = None if attempt == 1 else validation_errors
-            if not implement(issue, self.config, previous_errors=errors,
-                             repo_root=repo_root):
-                return False
-
-            ok, validation_errors = validate(self.config)
-            if ok:
-                break
-        else:
-            log.error("Validation failed after %d attempts", self.max_retries)
+        if not self._run_validation_loop(ctx):
             return False
 
-        # Stage 3: Publish (deterministic)
-        pr_url = publish(self.repo, branch, issue)
+        pr_url = publish(
+            ctx.repo,
+            ctx.branch,
+            ctx.issue,
+            repo_root=ctx.repo_root,
+        )
         if not pr_url:
             return False
 
-        # Stage 4: CI (deterministic polling) + fix loop
-        if self.config.get("ci", {}).get("enabled", True):
-            for attempt in range(1, self.max_retries + 1):
-                ok, ci_output = wait_for_ci(pr_url, self.config)
-                if ok:
-                    break
-                log.info("CI failed, attempt %d/%d", attempt, self.max_retries)
+        pr_url = self._run_ci_fix_loop(ctx, pr_url)
+        if not pr_url:
+            return False
 
-                ci_prompt_errors = render_template(
-                    "fix_ci",
-                    repo_root=repo_root,
-                    number=issue["number"],
-                    title=issue["title"],
-                    body=issue.get("body", ""),
-                    errors=ci_output,
-                )
-                if not implement(issue, self.config, previous_errors=ci_prompt_errors,
-                                 repo_root=repo_root):
-                    return False
-            else:
-                log.error("CI failed after %d attempts", self.max_retries)
-                return False
-
-        # Stage 5: Review (AI) + fix loop
-        if self.config.get("review", {}).get("enabled", True):
-            for attempt in range(1, self.max_retries + 1):
-                ok, feedback = review(self.repo, branch, self.config, issue=issue,
-                                      repo_root=repo_root)
-                if ok:
-                    break
-                log.info("Review flagged issues, attempt %d/%d", attempt, self.max_retries)
-
-                review_errors = render_template(
-                    "fix_review",
-                    repo_root=repo_root,
-                    number=issue["number"],
-                    title=issue["title"],
-                    body=issue.get("body", ""),
-                    errors=feedback,
-                )
-                if not implement(issue, self.config, previous_errors=review_errors,
-                                 repo_root=repo_root):
-                    return False
-            else:
-                log.error("Review failed after %d attempts", self.max_retries)
-                return False
+        pr_url = self._run_review_fix_loop(ctx, pr_url)
+        if not pr_url:
+            return False
 
         log.info("Issue #%d completed successfully.", issue["number"])
         return True
+
+    def _prepare_issue(self, issue: IssueData) -> _IssueContext | None:
+        branch = build_agent_branch(self.config, issue["number"])
+        repo_root = prepare_environment(self.repo, branch, self.workspace)
+        if not repo_root:
+            return None
+
+        log.info("Working in %s", repo_root)
+        config = load_config(self.config_path, repo_root=repo_root)
+        return _IssueContext(
+            repo=self.repo,
+            branch=branch,
+            issue=issue,
+            config=config,
+            repo_root=repo_root,
+        )
+
+    def _run_validation_loop(
+        self,
+        ctx: _IssueContext,
+        prompt_name: str = "implement",
+        error_text: str | None = None,
+        attempt_label: str = "Implementation",
+    ) -> bool:
+        validation_errors = error_text
+        current_prompt = prompt_name
+
+        for attempt in range(1, ctx.max_retries + 1):
+            log.info("%s attempt %d/%d", attempt_label, attempt, ctx.max_retries)
+
+            if not self._implement(
+                ctx,
+                prompt_name=current_prompt,
+                error_text=validation_errors,
+            ):
+                return False
+
+            ok, validation_errors = validate(ctx.config, repo_root=ctx.repo_root)
+            if ok:
+                return True
+
+            current_prompt = "fix_validation"
+
+        log.error("%s failed after %d attempts", attempt_label, ctx.max_retries)
+        return False
+
+    def _run_ci_fix_loop(self, ctx: _IssueContext, pr_url: str) -> str | None:
+        if not ctx.config.get("ci", {}).get("enabled", True):
+            return pr_url
+
+        return self._run_remote_fix_loop(
+            ctx,
+            pr_url,
+            stage_name="CI",
+            prompt_name="fix_ci",
+            check_fn=lambda current_pr_url: wait_for_ci(current_pr_url, ctx.config),
+        )
+
+    def _run_review_fix_loop(self, ctx: _IssueContext, pr_url: str) -> str | None:
+        if not ctx.config.get("review", {}).get("enabled", True):
+            return pr_url
+
+        return self._run_remote_fix_loop(
+            ctx,
+            pr_url,
+            stage_name="Review",
+            prompt_name="fix_review",
+            check_fn=lambda current_pr_url: review(
+                ctx.repo,
+                ctx.branch,
+                ctx.config,
+                issue=ctx.issue,
+                repo_root=ctx.repo_root,
+            ),
+        )
+
+    def _run_remote_fix_loop(
+        self,
+        ctx: _IssueContext,
+        pr_url: str,
+        stage_name: str,
+        prompt_name: str,
+        check_fn: RemoteCheckFn,
+    ) -> str | None:
+        for attempt in range(1, ctx.max_retries + 1):
+            ok, feedback = check_fn(pr_url)
+            if ok:
+                return pr_url
+
+            log.info("%s failed, attempt %d/%d", stage_name, attempt, ctx.max_retries)
+            if not self._run_validation_loop(
+                ctx,
+                prompt_name=prompt_name,
+                error_text=feedback,
+                attempt_label=f"{stage_name} remediation",
+            ):
+                return None
+
+            pr_url = publish(
+                ctx.repo,
+                ctx.branch,
+                ctx.issue,
+                repo_root=ctx.repo_root,
+                pr_url=pr_url,
+            )
+            if not pr_url:
+                return None
+
+        log.error("%s failed after %d attempts", stage_name, ctx.max_retries)
+        return None
+
+    def _implement(
+        self,
+        ctx: _IssueContext,
+        prompt_name: str,
+        error_text: str | None = None,
+    ) -> bool:
+        return implement(
+            ctx.issue,
+            ctx.config,
+            prompt_name=prompt_name,
+            error_text=error_text,
+            repo_root=ctx.repo_root,
+        )

@@ -23,6 +23,8 @@ class IssueData(_RequiredIssueData, total=False):
     """Minimal issue shape shared across stages and prompt rendering."""
 
     body: str
+    labels: list[str]
+    assignees: list[str]
 
 
 PipelineConfig: TypeAlias = dict[str, Any]

@@ -10,6 +10,7 @@ def invoke_claude(
     prompt: str,
     ai_config: dict,
     capture_output: bool = False,
+    cwd: str | None = None,
 ) -> bool | str | None:
     """Invoke Claude Code CLI with the given prompt.
 
@@ -19,14 +20,14 @@ def invoke_claude(
     provider = ai_config.get("provider", "claude-code")
 
     if provider == "claude-code":
-        return _invoke_cli(prompt, ai_config, capture_output)
+        return _invoke_cli(prompt, ai_config, capture_output, cwd)
     else:
         log.error("Unknown AI provider: %s", provider)
         return None if capture_output else False
 
 
 def _invoke_cli(
-    prompt: str, ai_config: dict, capture_output: bool
+    prompt: str, ai_config: dict, capture_output: bool, cwd: str | None = None
 ) -> bool | str | None:
     """Invoke claude-code CLI in non-interactive mode."""
     cmd = ["claude", "--print"]
@@ -41,6 +42,7 @@ def _invoke_cli(
         input=prompt,
         capture_output=True,
         text=True,
+        cwd=cwd,
     )
 
     if result.returncode != 0:
