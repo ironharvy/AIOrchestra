@@ -6,6 +6,7 @@ import logging
 from aiorchestra.agents import agent_family_from_config, build_agent_branch
 from aiorchestra.config import load_config
 from aiorchestra.stages._shell import run_command
+from aiorchestra.stages.clarification import request_clarification
 from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.implement import implement
@@ -16,6 +17,9 @@ from aiorchestra.stages.types import IssueData, PipelineConfig, RemoteCheckFn
 from aiorchestra.stages.validate import validate
 
 log = logging.getLogger(__name__)
+
+# Sentinel: issue was deferred (not a failure — just waiting for human input).
+_DEFERRED = "deferred"
 
 
 def _has_changes(repo_root: str) -> bool:
@@ -77,19 +81,27 @@ class Pipeline:
                 log.info("[dry-run] Would process issue #%d", issue["number"])
                 continue
 
-            ok = self._process_issue(issue)
-            if not ok:
+            result = self._process_issue(issue)
+            if result == _DEFERRED:
+                log.info("Issue #%d deferred — waiting for clarification", issue["number"])
+                continue
+            if not result:
                 log.error("Failed to process issue #%d", issue["number"])
                 return 1
 
         return 0
 
-    def _process_issue(self, issue: IssueData) -> bool:
+    def _process_issue(self, issue: IssueData) -> bool | str:
+        """Process a single issue. Returns True on success, False on failure,
+        or ``_DEFERRED`` when the issue needs human clarification."""
         ctx = self._prepare_issue(issue)
         if ctx is None:
             return False
 
-        if not self._run_validation_loop(ctx):
+        loop_result = self._run_validation_loop(ctx)
+        if loop_result == _DEFERRED:
+            return _DEFERRED
+        if not loop_result:
             return False
 
         pr_url = publish(
@@ -134,18 +146,22 @@ class Pipeline:
         prompt_name: str = "implement",
         error_text: str | None = None,
         attempt_label: str = "Implementation",
-    ) -> bool:
+    ) -> bool | str:
+        """Returns True on success, False on failure, or _DEFERRED."""
         validation_errors = error_text
         current_prompt = prompt_name
 
         for attempt in range(1, ctx.max_retries + 1):
             log.info("%s attempt %d/%d", attempt_label, attempt, ctx.max_retries)
 
-            if not self._implement(
+            impl_result = self._implement(
                 ctx,
                 prompt_name=current_prompt,
                 error_text=validation_errors,
-            ):
+            )
+            if impl_result == _DEFERRED:
+                return _DEFERRED
+            if not impl_result:
                 return False
 
             # Invariant 2: never proceed past implementation with zero file
@@ -235,11 +251,24 @@ class Pipeline:
         ctx: _IssueContext,
         prompt_name: str,
         error_text: str | None = None,
-    ) -> bool:
-        return implement(
+    ) -> bool | str:
+        """Returns True on success, False on failure, or _DEFERRED."""
+        result = implement(
             ctx.issue,
             ctx.config,
             prompt_name=prompt_name,
             error_text=error_text,
             repo_root=ctx.repo_root,
         )
+
+        if result.needs_clarification:
+            log.info(
+                "Agent requested clarification for issue #%d",
+                ctx.issue["number"],
+            )
+            request_clarification(
+                ctx.repo, ctx.issue, result.clarification_message,
+            )
+            return _DEFERRED
+
+        return result.success

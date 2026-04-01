@@ -7,6 +7,7 @@ import time
 
 from aiorchestra.agents import normalize_agent_family
 from aiorchestra.stages._shell import run_command
+from aiorchestra.stages.clarification import CLARIFICATION_LABEL
 from aiorchestra.stages.types import IssueData
 
 log = logging.getLogger(__name__)
@@ -88,8 +89,20 @@ def discover_issues(
         log.error("No issues matched required agent label: %s", required_label)
         return []
 
-    log.info("Found %d issue(s)", len(eligible_issues))
-    return eligible_issues
+    # Filter out issues waiting on human clarification.
+    ready_issues = [
+        issue for issue in eligible_issues
+        if CLARIFICATION_LABEL not in issue.get("labels", [])
+    ]
+    deferred = len(eligible_issues) - len(ready_issues)
+    if deferred:
+        log.info("Skipping %d issue(s) pending clarification", deferred)
+    if not ready_issues:
+        log.info("All matching issues are waiting for clarification")
+        return []
+
+    log.info("Found %d issue(s)", len(ready_issues))
+    return ready_issues
 
 
 def _normalize_issue(issue: dict) -> IssueData:

@@ -1,9 +1,41 @@
 """Claude AI provider — wraps the Claude Code CLI."""
 
+from __future__ import annotations
+
 import logging
+import re
 import subprocess
+from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
+
+# Marker the agent emits when the task description is ambiguous.
+_CLARIFICATION_RE = re.compile(
+    r"^NEEDS_CLARIFICATION:\s*(.+)", re.MULTILINE | re.DOTALL,
+)
+
+
+@dataclass(frozen=True)
+class InvokeResult:
+    """Structured outcome of an AI invocation."""
+
+    success: bool
+    output: str = ""
+    needs_clarification: bool = False
+    clarification_message: str = ""
+
+
+def _parse_clarification(text: str) -> InvokeResult:
+    """Check raw agent output for clarification requests."""
+    match = _CLARIFICATION_RE.search(text)
+    if match:
+        return InvokeResult(
+            success=True,
+            output=text,
+            needs_clarification=True,
+            clarification_message=match.group(1).strip(),
+        )
+    return InvokeResult(success=True, output=text)
 
 
 def invoke_claude(
@@ -11,24 +43,25 @@ def invoke_claude(
     ai_config: dict,
     capture_output: bool = False,
     cwd: str | None = None,
-) -> bool | str | None:
+) -> InvokeResult:
     """Invoke Claude Code CLI with the given prompt.
 
-    If capture_output is False, returns True/False for success/failure.
-    If capture_output is True, returns the output string or None on failure.
+    Always returns an ``InvokeResult``.  When *capture_output* is True the
+    full stdout is kept in ``result.output``; otherwise output is still
+    available but primarily used for clarification detection.
     """
     provider = ai_config.get("provider", "claude-code")
 
     if provider == "claude-code":
         return _invoke_cli(prompt, ai_config, capture_output, cwd)
-    else:
-        log.error("Unknown AI provider: %s", provider)
-        return None if capture_output else False
+
+    log.error("Unknown AI provider: %s", provider)
+    return InvokeResult(success=False)
 
 
 def _invoke_cli(
     prompt: str, ai_config: dict, capture_output: bool, cwd: str | None = None
-) -> bool | str | None:
+) -> InvokeResult:
     """Invoke claude-code CLI in non-interactive mode."""
     cmd = ["claude", "--print"]
 
@@ -48,7 +81,7 @@ def _invoke_cli(
             "AI agent has no file-editing permissions — "
             "refusing to invoke without tool access"
         )
-        return None if capture_output else False
+        return InvokeResult(success=False)
 
     model = ai_config.get("model")
     if model:
@@ -65,8 +98,6 @@ def _invoke_cli(
 
     if result.returncode != 0:
         log.error("Claude CLI failed: %s", result.stderr.strip())
-        return None if capture_output else False
+        return InvokeResult(success=False, output=result.stderr)
 
-    if capture_output:
-        return result.stdout
-    return True
+    return _parse_clarification(result.stdout)
