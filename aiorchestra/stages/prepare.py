@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from aiorchestra.stages._shell import run_command
 log = logging.getLogger(__name__)
 
 DEFAULT_WORKSPACE = Path.home() / ".aiorchestra" / "workspaces"
+
+MIN_DISK_MB = 500
 
 
 def prepare_environment(repo: str, branch: str, workspace: str | None = None) -> str | None:
@@ -28,6 +31,9 @@ def prepare_environment(repo: str, branch: str, workspace: str | None = None) ->
     repo_dir = workspace_root / repo_name
 
     try:
+        # -- Phase 0: Disk space ------------------------------------------
+        _check_disk_space(workspace_root)
+
         # -- Phase 1: Git ------------------------------------------------
         _setup_git(repo, branch, repo_dir)
 
@@ -42,6 +48,19 @@ def prepare_environment(repo: str, branch: str, workspace: str | None = None) ->
     except RuntimeError as exc:
         log.error("Prepare failed: %s", exc)
         return None
+
+
+def _check_disk_space(workspace_root: Path) -> None:
+    """Fail fast if the filesystem has less than MIN_DISK_MB free."""
+    check_path = workspace_root if workspace_root.exists() else Path.home()
+    usage = shutil.disk_usage(check_path)
+    free_mb = usage.free // (1024 * 1024)
+    if free_mb < MIN_DISK_MB:
+        raise RuntimeError(
+            f"Insufficient disk space: {free_mb} MB free, "
+            f"need at least {MIN_DISK_MB} MB"
+        )
+    log.debug("Disk space OK: %d MB free", free_mb)
 
 
 def _setup_git(repo: str, branch: str, repo_dir: Path) -> None:

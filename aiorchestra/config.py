@@ -16,6 +16,7 @@ DEFAULTS = {
         "provider": "claude-code",
         "model": "sonnet",
         "max_retries": 3,
+        "skip_permissions": True,
     },
     "test": {
         "command": "pytest",

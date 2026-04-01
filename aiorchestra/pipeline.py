@@ -5,6 +5,7 @@ import logging
 
 from aiorchestra.agents import agent_family_from_config, build_agent_branch
 from aiorchestra.config import load_config
+from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.implement import implement
@@ -15,6 +16,14 @@ from aiorchestra.stages.types import IssueData, PipelineConfig, RemoteCheckFn
 from aiorchestra.stages.validate import validate
 
 log = logging.getLogger(__name__)
+
+
+def _has_changes(repo_root: str) -> bool:
+    """Return True if the worktree has any uncommitted or staged changes."""
+    result = run_command(
+        ["git", "status", "--porcelain"], cwd=repo_root, logger=log,
+    )
+    return bool(result.stdout.strip())
 
 
 @dataclass(frozen=True)
@@ -136,6 +145,14 @@ class Pipeline:
                 prompt_name=current_prompt,
                 error_text=validation_errors,
             ):
+                return False
+
+            # Invariant 2: never proceed past implementation with zero file
+            # changes.  Validation on an unmodified worktree is a false positive.
+            if not _has_changes(ctx.repo_root):
+                log.error(
+                    "AI agent produced no file changes — aborting"
+                )
                 return False
 
             ok, validation_errors = validate(ctx.config, repo_root=ctx.repo_root)

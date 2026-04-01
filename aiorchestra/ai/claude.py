@@ -32,6 +32,24 @@ def _invoke_cli(
     """Invoke claude-code CLI in non-interactive mode."""
     cmd = ["claude", "--print"]
 
+    # Invariant 1: never invoke an agent that cannot write files.
+    skip_perms = ai_config.get("skip_permissions", True)
+    allowed_tools = ai_config.get("allowed_tools")
+
+    if skip_perms:
+        cmd.append("--dangerously-skip-permissions")
+
+    if allowed_tools:
+        for tool in allowed_tools:
+            cmd.extend(["--allowedTools", tool])
+
+    if not skip_perms and not allowed_tools:
+        log.error(
+            "AI agent has no file-editing permissions — "
+            "refusing to invoke without tool access"
+        )
+        return None if capture_output else False
+
     model = ai_config.get("model")
     if model:
         cmd.extend(["--model", model])

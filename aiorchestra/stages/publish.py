@@ -16,7 +16,16 @@ def publish(
     pr_url: str | None = None,
 ) -> PublishResult:
     """Commit local changes, push the branch, and ensure a PR exists."""
-    if not _commit_changes(issue, repo_root):
+    committed = _commit_changes(issue, repo_root)
+    if committed is None:
+        return None
+
+    # Invariant 3: never push a branch with zero commits ahead of the base.
+    # Invariant 4: never create a PR with an empty diff.
+    if not _has_commits_ahead(repo_root):
+        log.error(
+            "Nothing to publish — branch has no changes relative to main"
+        )
         return None
 
     if not _push_branch(branch, repo_root):
@@ -29,22 +38,36 @@ def publish(
     return _create_pr(repo, branch, issue, repo_root)
 
 
-def _commit_changes(issue: IssueData, repo_root: str) -> bool:
-    """Commit any local changes before pushing."""
+def _has_commits_ahead(repo_root: str) -> bool:
+    """Return True if HEAD has commits that origin/main does not."""
+    result = run_command(
+        ["git", "log", "origin/main..HEAD", "--oneline"],
+        cwd=repo_root,
+        logger=log,
+    )
+    return bool(result.stdout.strip())
+
+
+def _commit_changes(issue: IssueData, repo_root: str) -> bool | None:
+    """Commit any local changes before pushing.
+
+    Returns True if changes were committed, False if there was nothing to
+    commit, or None on a git error (caller should abort).
+    """
     result = run_command(["git", "status", "--porcelain"], cwd=repo_root, logger=log)
     if result.returncode != 0:
         log.error("Failed to inspect git status: %s", result.stderr.strip())
-        return False
+        return None
 
     if not result.stdout.strip():
-        log.info("No local changes to commit.")
-        return True
+        log.debug("No local changes to commit.")
+        return False
 
     log.info("Committing local changes for issue #%d", issue["number"])
     result = run_command(["git", "add", "-A"], cwd=repo_root, logger=log)
     if result.returncode != 0:
         log.error("git add failed: %s", result.stderr.strip())
-        return False
+        return None
 
     result = run_command(
         ["git", "commit", "-m", f"Fix #{issue['number']}: {issue['title']}"],
@@ -53,7 +76,7 @@ def _commit_changes(issue: IssueData, repo_root: str) -> bool:
     )
     if result.returncode != 0:
         log.error("git commit failed: %s", result.stderr.strip())
-        return False
+        return None
 
     return True
 
