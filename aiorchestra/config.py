@@ -24,7 +24,36 @@ DEFAULTS = {
     },
     "review": {
         "enabled": True,
-        "provider": "claude-code",
+        "tiers": [
+            {
+                "name": "static-analysis",
+                "enabled": False,
+                "commands": [
+                    "semgrep --config=auto --quiet .",
+                    "bandit -r . -q",
+                ],
+            },
+            {
+                "name": "ai-review",
+                "enabled": True,
+                "provider": "claude-code",
+            },
+            {
+                "name": "cross-model-review",
+                "enabled": False,
+                "provider": "ollama",
+                "ollama": {
+                    "endpoint": "http://localhost:11434",
+                    "model": "mistral",
+                    "timeout": 120,
+                },
+            },
+            {
+                "name": "human-required",
+                "enabled": False,
+                "labels": ["security", "breaking-change"],
+            },
+        ],
     },
     "ci": {
         "enabled": True,
