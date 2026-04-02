@@ -14,8 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from aiorchestra.ai.claude import invoke_claude
-from aiorchestra.ai.ollama import invoke_ollama, ollama_available
+from aiorchestra.ai.provider import create_provider
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.types import FeedbackResult, IssueData, PipelineConfig
 from aiorchestra.templates import render_template
@@ -42,7 +41,7 @@ def _run_ai_review(
     issue: IssueData | None,
     repo_root: str | None,
 ) -> FeedbackResult:
-    """Run primary AI code review via Claude."""
+    """Run primary AI code review via the configured provider."""
     number = issue["number"] if issue else 0
     title = issue["title"] if issue else "unknown"
 
@@ -55,7 +54,8 @@ def _run_ai_review(
     )
 
     ai_config = {**config.get("ai", {}), **tier_cfg}
-    result = invoke_claude(prompt, ai_config, capture_output=True, cwd=repo_root)
+    provider = create_provider(ai_config)
+    result = provider.run(prompt, capture_output=True, cwd=repo_root)
 
     if not result.success:
         return False, "AI review invocation failed."
@@ -78,8 +78,6 @@ def _run_cross_model_review(
     repo_root: str | None,
 ) -> FeedbackResult:
     """Run cross-model review via a different provider (default: Ollama)."""
-    provider = tier_cfg.get("provider", "ollama")
-
     number = issue["number"] if issue else 0
     title = issue["title"] if issue else "unknown"
 
@@ -91,46 +89,38 @@ def _run_cross_model_review(
         diff=diff,
     )
 
-    if provider == "ollama":
-        return _cross_model_ollama(prompt, tier_cfg)
+    # Build provider config — for Ollama tiers the endpoint/model/timeout
+    # live under a nested "ollama" key in the config.
+    provider_name = tier_cfg.get("provider", "ollama")
+    if provider_name == "ollama":
+        provider_cfg = {**tier_cfg.get("ollama", {}), "provider": "ollama"}
+    else:
+        provider_cfg = {**tier_cfg, "provider": provider_name}
 
-    # For claude-code or claude-api, use invoke_claude with tier-specific config
-    from aiorchestra.ai.claude import invoke_claude
+    provider = create_provider(provider_cfg)
 
-    result = invoke_claude(prompt, tier_cfg, capture_output=True)
-    if not result.success:
-        return False, "Cross-model review invocation failed."
-    if "LGTM" in result.output:
-        log.info("Cross-model review (T4) passed.")
-        return True, None
-    return False, result.output
-
-
-def _cross_model_ollama(prompt: str, tier_cfg: dict[str, Any]) -> FeedbackResult:
-    """Run cross-model review using local Ollama."""
-    ollama_cfg = tier_cfg.get("ollama", {})
-    if not ollama_available(ollama_cfg):
-        log.warning("Ollama not available — skipping cross-model review (T4)")
+    if not provider.available():
+        log.warning("Provider %s not available — skipping cross-model review (T4)", provider_name)
         return True, None
 
-    response = invoke_ollama(
-        prompt,
-        ollama_cfg,
-        system="You are a code reviewer. Review the diff for bugs, security issues, and "
+    system_prompt = (
+        "You are a code reviewer. Review the diff for bugs, security issues, and "
         "logic errors. If the code looks good, respond with exactly: LGTM. "
-        "If there are issues, describe them clearly with severity levels.",
+        "If there are issues, describe them clearly with severity levels."
     )
 
-    if response is None:
-        log.warning("Ollama returned no response — skipping cross-model review (T4)")
+    result = provider.run(prompt, system=system_prompt)
+
+    if not result.success:
+        log.warning("Cross-model review returned no response — skipping (T4)")
         return True, None
 
-    if "LGTM" in response:
+    if "LGTM" in result.output:
         log.info("Cross-model review (T4) passed.")
         return True, None
 
     log.info("Cross-model review (T4) flagged issues.")
-    return False, response
+    return False, result.output
 
 
 # -- T5: Human-required gate -------------------------------------------------

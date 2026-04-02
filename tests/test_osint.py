@@ -154,10 +154,8 @@ def test_gather_with_working_collectors(monkeypatch):
 
     monkeypatch.setattr("aiorchestra.stages.osint.run_command", fake_run)
 
-    # Disable Ollama to test raw path
-    monkeypatch.setattr("aiorchestra.stages.osint.ollama_available", lambda _: False)
-
-    report = gather(["target.io"], {"collectors": ["dig"]})
+    # Disable Ollama summarisation by marking it disabled in config
+    report = gather(["target.io"], {"collectors": ["dig"], "ollama": {"enabled": False}})
     assert report.has_data
     assert report.results[0].success
     assert "result data" in report.raw_text()
@@ -165,16 +163,25 @@ def test_gather_with_working_collectors(monkeypatch):
 
 def test_gather_with_ollama_summary(monkeypatch):
     """When Ollama is available, raw output gets summarised."""
+    from aiorchestra.ai.provider import InvokeResult
+
     monkeypatch.setattr("aiorchestra.stages.osint.shutil.which", lambda _: "/usr/bin/fake")
 
     def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
         return types.SimpleNamespace(returncode=0, stdout="raw whois", stderr="")
 
     monkeypatch.setattr("aiorchestra.stages.osint.run_command", fake_run)
-    monkeypatch.setattr("aiorchestra.stages.osint.ollama_available", lambda _: True)
+
+    class FakeProvider:
+        def run(self, prompt, **kwargs):
+            return InvokeResult(success=True, output="## Summary\nKey findings here")
+
+        def available(self):
+            return True
+
     monkeypatch.setattr(
-        "aiorchestra.stages.osint.invoke_ollama",
-        lambda prompt, config: "## Summary\nKey findings here",
+        "aiorchestra.stages.osint.create_provider",
+        lambda config: FakeProvider(),
     )
 
     report = gather(
@@ -216,11 +223,15 @@ def test_enrich_issue_with_explicit_targets(monkeypatch):
         return types.SimpleNamespace(returncode=0, stdout="data", stderr="")
 
     monkeypatch.setattr("aiorchestra.stages.osint.run_command", fake_run)
-    monkeypatch.setattr("aiorchestra.stages.osint.ollama_available", lambda _: False)
 
     result = enrich_issue(
         {"number": 1, "title": "No domains here"},
-        {"enabled": True, "targets": ["explicit.io"], "collectors": ["dig"]},
+        {
+            "enabled": True,
+            "targets": ["explicit.io"],
+            "collectors": ["dig"],
+            "ollama": {"enabled": False},
+        },
     )
     assert result  # non-empty since we gave an explicit target
 
@@ -233,10 +244,9 @@ def test_enrich_issue_auto_extracts_targets(monkeypatch):
         return types.SimpleNamespace(returncode=0, stdout="dns-data", stderr="")
 
     monkeypatch.setattr("aiorchestra.stages.osint.run_command", fake_run)
-    monkeypatch.setattr("aiorchestra.stages.osint.ollama_available", lambda _: False)
 
     result = enrich_issue(
         {"number": 5, "title": "Audit target.io", "body": "Check target.io infrastructure"},
-        {"enabled": True, "collectors": ["dig"]},
+        {"enabled": True, "collectors": ["dig"], "ollama": {"enabled": False}},
     )
     assert "dns-data" in result
