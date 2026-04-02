@@ -226,7 +226,12 @@ def test_enrich_issue_with_explicit_targets(monkeypatch):
 
     result = enrich_issue(
         {"number": 1, "title": "No domains here"},
-        {"enabled": True, "targets": ["explicit.io"], "collectors": ["dig"], "ollama": {"enabled": False}},
+        {
+            "enabled": True,
+            "targets": ["explicit.io"],
+            "collectors": ["dig"],
+            "ollama": {"enabled": False},
+        },
     )
     assert result  # non-empty since we gave an explicit target
 

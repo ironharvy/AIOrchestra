@@ -110,8 +110,7 @@ class ClaudeCodeProvider(AIProvider):
 
         if not skip_perms and not allowed_tools:
             log.error(
-                "AI agent has no file-editing permissions — refusing to invoke "
-                "without tool access"
+                "AI agent has no file-editing permissions — refusing to invoke without tool access"
             )
             return InvokeResult(success=False)
 
@@ -234,7 +233,6 @@ def create_provider(config: dict) -> AIProvider:
     cls = _PROVIDERS.get(name)
     if cls is None:
         raise ValueError(
-            f"Unknown AI provider {name!r}. "
-            f"Available: {', '.join(sorted(_PROVIDERS))}"
+            f"Unknown AI provider {name!r}. Available: {', '.join(sorted(_PROVIDERS))}"
         )
     return cls(config)
