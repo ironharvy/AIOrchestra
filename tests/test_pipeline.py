@@ -302,9 +302,9 @@ def test_invoke_claude_refuses_without_permissions(monkeypatch, caplog):
         cli_invoked = True
         return types.SimpleNamespace(returncode=0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.claude.subprocess.run", spy_run)
+    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", spy_run)
 
-    with caplog.at_level(logging.ERROR, logger="aiorchestra.ai.claude"):
+    with caplog.at_level(logging.ERROR, logger="aiorchestra.ai.provider"):
         result = _invoke_cli(
             "test prompt",
             {"skip_permissions": False},

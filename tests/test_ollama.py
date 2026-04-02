@@ -32,7 +32,7 @@ def test_invoke_ollama_success(monkeypatch):
         captured["timeout"] = timeout
         return FakeResponse(json.dumps({"response": "summary result"}).encode())
 
-    monkeypatch.setattr("aiorchestra.ai.ollama.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
 
     result = invoke_ollama("test prompt", {"model": "phi3", "endpoint": "http://host:11434"})
 
@@ -50,7 +50,7 @@ def test_invoke_ollama_with_system_prompt(monkeypatch):
         captured["body"] = json.loads(req.data.decode())
         return FakeResponse(json.dumps({"response": "ok"}).encode())
 
-    monkeypatch.setattr("aiorchestra.ai.ollama.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
 
     invoke_ollama("prompt", {}, system="You are an analyst")
     assert captured["body"]["system"] == "You are an analyst"
@@ -63,7 +63,7 @@ def test_invoke_ollama_network_error(monkeypatch):
     def fake_urlopen(req, timeout=None):
         raise urllib.error.URLError("Connection refused")
 
-    monkeypatch.setattr("aiorchestra.ai.ollama.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
 
     result = invoke_ollama("test", {})
     assert result is None
@@ -75,7 +75,7 @@ def test_invoke_ollama_empty_response(monkeypatch):
     def fake_urlopen(req, timeout=None):
         return FakeResponse(json.dumps({"response": ""}).encode())
 
-    monkeypatch.setattr("aiorchestra.ai.ollama.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
 
     result = invoke_ollama("test", {})
     assert result is None
@@ -87,7 +87,7 @@ def test_invoke_ollama_timeout(monkeypatch):
     def fake_urlopen(req, timeout=None):
         raise TimeoutError()
 
-    monkeypatch.setattr("aiorchestra.ai.ollama.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
 
     result = invoke_ollama("test", {"timeout": 5})
     assert result is None
@@ -97,7 +97,7 @@ def test_ollama_available_success(monkeypatch):
     def fake_urlopen(req, timeout=None):
         return FakeResponse(b"{}", status=200)
 
-    monkeypatch.setattr("aiorchestra.ai.ollama.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
     assert ollama_available({}) is True
 
 
@@ -105,5 +105,5 @@ def test_ollama_available_failure(monkeypatch):
     def fake_urlopen(req, timeout=None):
         raise ConnectionError()
 
-    monkeypatch.setattr("aiorchestra.ai.ollama.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
     assert ollama_available({}) is False

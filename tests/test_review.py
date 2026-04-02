@@ -2,7 +2,7 @@
 
 import types
 
-from aiorchestra.ai.claude import InvokeResult
+from aiorchestra.ai.provider import InvokeResult
 from aiorchestra.stages import review as rev_mod
 from aiorchestra.stages.review import (
     _check_human_required,
@@ -15,19 +15,43 @@ ISSUE = {"number": 42, "title": "Add feature X"}
 DIFF = "+def foo():\n+    return 42\n"
 
 
+class FakeProvider:
+    """Configurable fake provider for testing."""
+
+    def __init__(self, output="LGTM", success=True, is_available=True):
+        self._output = output
+        self._success = success
+        self._is_available = is_available
+        self.called = False
+        self.last_prompt = None
+
+    def run(self, prompt, *, system=None, capture_output=False, cwd=None):
+        self.called = True
+        self.last_prompt = prompt
+        return InvokeResult(success=self._success, output=self._output)
+
+    def available(self):
+        return self._is_available
+
+
+def _patch_provider(monkeypatch, output="LGTM", success=True, is_available=True):
+    """Patch create_provider on the review module to return a FakeProvider."""
+    provider = FakeProvider(output=output, success=success, is_available=is_available)
+    monkeypatch.setattr(
+        rev_mod,
+        "create_provider",
+        lambda cfg: provider,
+    )
+    return provider
+
+
 # ---------------------------------------------------------------------------
 # T3: AI review
 # ---------------------------------------------------------------------------
 
 
 def test_ai_review_passes_on_lgtm(monkeypatch):
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_claude",
-        lambda prompt, cfg, capture_output=False, cwd=None: InvokeResult(
-            success=True, output="LGTM"
-        ),
-    )
+    _patch_provider(monkeypatch, output="LGTM")
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -40,13 +64,7 @@ def test_ai_review_passes_on_lgtm(monkeypatch):
 
 
 def test_ai_review_fails_on_issues(monkeypatch):
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_claude",
-        lambda prompt, cfg, capture_output=False, cwd=None: InvokeResult(
-            success=True, output="Bug: off-by-one in loop"
-        ),
-    )
+    _patch_provider(monkeypatch, output="Bug: off-by-one in loop")
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -59,11 +77,7 @@ def test_ai_review_fails_on_issues(monkeypatch):
 
 
 def test_ai_review_fails_on_invocation_error(monkeypatch):
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_claude",
-        lambda prompt, cfg, capture_output=False, cwd=None: InvokeResult(success=False),
-    )
+    _patch_provider(monkeypatch, success=False)
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -81,12 +95,7 @@ def test_ai_review_fails_on_invocation_error(monkeypatch):
 
 
 def test_cross_model_ollama_passes_on_lgtm(monkeypatch):
-    monkeypatch.setattr(rev_mod, "ollama_available", lambda cfg: True)
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_ollama",
-        lambda prompt, cfg, system=None: "LGTM",
-    )
+    _patch_provider(monkeypatch, output="LGTM")
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -100,12 +109,7 @@ def test_cross_model_ollama_passes_on_lgtm(monkeypatch):
 
 
 def test_cross_model_ollama_flags_issues(monkeypatch):
-    monkeypatch.setattr(rev_mod, "ollama_available", lambda cfg: True)
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_ollama",
-        lambda prompt, cfg, system=None: "critical: SQL injection in query builder",
-    )
+    _patch_provider(monkeypatch, output="critical: SQL injection in query builder")
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -119,7 +123,7 @@ def test_cross_model_ollama_flags_issues(monkeypatch):
 
 
 def test_cross_model_skipped_when_ollama_unavailable(monkeypatch):
-    monkeypatch.setattr(rev_mod, "ollama_available", lambda cfg: False)
+    _patch_provider(monkeypatch, is_available=False)
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -131,13 +135,8 @@ def test_cross_model_skipped_when_ollama_unavailable(monkeypatch):
     assert ok  # gracefully passes when unavailable
 
 
-def test_cross_model_skipped_on_none_response(monkeypatch):
-    monkeypatch.setattr(rev_mod, "ollama_available", lambda cfg: True)
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_ollama",
-        lambda prompt, cfg, system=None: None,
-    )
+def test_cross_model_skipped_on_failed_response(monkeypatch):
+    _patch_provider(monkeypatch, success=False)
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -146,7 +145,7 @@ def test_cross_model_skipped_on_none_response(monkeypatch):
 
     tier_cfg = {"provider": "ollama", "ollama": {}}
     ok, feedback = _run_cross_model_review(DIFF, tier_cfg, ISSUE, None)
-    assert ok  # gracefully passes when response is None
+    assert ok  # gracefully passes when response fails
 
 
 # ---------------------------------------------------------------------------
@@ -214,19 +213,7 @@ def test_review_runs_tiers_in_order(monkeypatch):
             returncode=0, stdout=DIFF, stderr=""
         ),
     )
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_claude",
-        lambda prompt, cfg, capture_output=False, cwd=None: InvokeResult(
-            success=True, output="LGTM"
-        ),
-    )
-    monkeypatch.setattr(rev_mod, "ollama_available", lambda cfg: True)
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_ollama",
-        lambda prompt, cfg, system=None: "LGTM",
-    )
+    _patch_provider(monkeypatch, output="LGTM")
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -255,28 +242,27 @@ def test_review_short_circuits_on_tier_failure(monkeypatch):
             returncode=0, stdout=DIFF, stderr=""
         ),
     )
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_claude",
-        lambda prompt, cfg, capture_output=False, cwd=None: InvokeResult(
-            success=True, output="Bug: memory leak"
-        ),
-    )
+
+    # AI review will flag issues (T3 fails), cross-model (T4) should never run.
+    call_log = []
+
+    def fake_create_provider(cfg):
+        provider_name = cfg.get("provider", "claude-code")
+        if provider_name in ("claude-code",):
+            # T3 ai-review returns failure
+            p = FakeProvider(output="Bug: memory leak")
+            return p
+        # T4 cross-model
+        p = FakeProvider(output="LGTM")
+        call_log.append("t4-created")
+        return p
+
+    monkeypatch.setattr(rev_mod, "create_provider", fake_create_provider)
     monkeypatch.setattr(
         rev_mod,
         "render_template",
         lambda name, **kw: "template",
     )
-
-    ollama_called = False
-
-    def spy_ollama(prompt, cfg, system=None):
-        nonlocal ollama_called
-        ollama_called = True
-        return "LGTM"
-
-    monkeypatch.setattr(rev_mod, "invoke_ollama", spy_ollama)
-    monkeypatch.setattr(rev_mod, "ollama_available", lambda cfg: True)
 
     config = {
         "review": {
@@ -290,7 +276,7 @@ def test_review_short_circuits_on_tier_failure(monkeypatch):
     ok, feedback = review("owner/repo", "branch", config, issue=ISSUE)
     assert not ok
     assert "memory leak" in feedback
-    assert not ollama_called  # T4 never executed because T3 failed
+    assert "t4-created" not in call_log  # T4 never executed because T3 failed
 
 
 def test_review_skips_disabled_tiers(monkeypatch):
@@ -302,14 +288,7 @@ def test_review_skips_disabled_tiers(monkeypatch):
         ),
     )
 
-    claude_called = False
-
-    def spy_claude(prompt, cfg, capture_output=False, cwd=None):
-        nonlocal claude_called
-        claude_called = True
-        return InvokeResult(success=True, output="LGTM")
-
-    monkeypatch.setattr(rev_mod, "invoke_claude", spy_claude)
+    provider = _patch_provider(monkeypatch, output="LGTM")
     monkeypatch.setattr(
         rev_mod,
         "render_template",
@@ -327,7 +306,7 @@ def test_review_skips_disabled_tiers(monkeypatch):
 
     ok, feedback = review("owner/repo", "branch", config, issue=ISSUE)
     assert ok
-    assert not claude_called
+    assert not provider.called
 
 
 def test_review_falls_back_to_legacy_when_no_tiers(monkeypatch):
@@ -339,13 +318,7 @@ def test_review_falls_back_to_legacy_when_no_tiers(monkeypatch):
             returncode=0, stdout=DIFF, stderr=""
         ),
     )
-    monkeypatch.setattr(
-        rev_mod,
-        "invoke_claude",
-        lambda prompt, cfg, capture_output=False, cwd=None: InvokeResult(
-            success=True, output="LGTM"
-        ),
-    )
+    _patch_provider(monkeypatch, output="LGTM")
     monkeypatch.setattr(
         rev_mod,
         "render_template",

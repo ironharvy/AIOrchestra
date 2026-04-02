@@ -14,7 +14,7 @@ import re
 import shutil
 from dataclasses import dataclass, field
 
-from aiorchestra.ai.ollama import invoke_ollama, ollama_available
+from aiorchestra.ai.provider import create_provider
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.types import IssueData
 from aiorchestra.templates import render_template
@@ -242,23 +242,27 @@ def gather(
         log.warning("OSINT: all collectors returned empty — nothing to summarise")
         return report
 
-    # Summarise via local Ollama if configured and reachable.
+    # Summarise via local LLM if configured and reachable.
     ollama_cfg = osint_config.get("ollama", {})
-    if ollama_cfg.get("enabled", True) and ollama_available(ollama_cfg):
-        report.summary = _summarise(report.raw_text(), ollama_cfg)
+    if ollama_cfg.get("enabled", True):
+        provider = create_provider({**ollama_cfg, "provider": "ollama"})
+        if provider.available():
+            report.summary = _summarise(report.raw_text(), provider)
+        else:
+            log.info("OSINT: summarisation provider unavailable — using raw collector output")
     else:
-        log.info("OSINT: Ollama unavailable — using raw collector output")
+        log.info("OSINT: summarisation disabled — using raw collector output")
 
     return report
 
 
-def _summarise(raw_text: str, ollama_config: dict) -> str:
-    """Distill raw OSINT output into a structured summary via Ollama."""
+def _summarise(raw_text: str, provider) -> str:
+    """Distill raw OSINT output into a structured summary via the given provider."""
     prompt = render_template("osint_summarize", raw_osint=raw_text)
-    result = invoke_ollama(prompt, ollama_config)
-    if result:
-        log.info("OSINT: summarised %d bytes → %d bytes", len(raw_text), len(result))
-        return result
+    result = provider.run(prompt)
+    if result.success:
+        log.info("OSINT: summarised %d bytes → %d bytes", len(raw_text), len(result.output))
+        return result.output
     log.warning("OSINT: summarisation failed — falling back to raw output")
     return ""
 
