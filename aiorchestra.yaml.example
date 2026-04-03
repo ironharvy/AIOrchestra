@@ -15,6 +15,12 @@ test:
 review:
   enabled: true
   provider: "claude-code"
+  tiers:
+    - name: "static-analysis"
+      enabled: true
+      commands:
+        - "bandit -c pyproject.toml -r ."
+        - "semgrep scan --config auto --error ."
 
 ci:
   enabled: true
