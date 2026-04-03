@@ -1,0 +1,156 @@
+rules:
+  # --- Tier 1: Security & Correctness ---
+
+  - id: no-direct-subprocess
+    patterns:
+      - pattern: subprocess.run(...)
+      - pattern-not-inside: |
+          def run_command(...):
+              ...
+    paths:
+      exclude:
+        - aiorchestra/stages/_shell.py
+        - aiorchestra/ai/_cli.py
+        - aiorchestra/ai/_ollama.py
+        - tests/*
+    message: >-
+      Direct subprocess.run() call detected. Use run_command() from
+      aiorchestra.stages._shell instead, or CLIProvider base class
+      for AI providers.
+    languages: [python]
+    severity: ERROR
+
+  - id: no-hardcoded-secrets
+    patterns:
+      - pattern-either:
+          - pattern: $KEY = "sk-..."
+          - pattern: $KEY = "ghp_..."
+          - pattern: $KEY = "ghs_..."
+          - pattern: $KEY = "xoxb-..."
+          - pattern: $KEY = "xoxp-..."
+    message: >-
+      Possible hardcoded secret or API key. Use environment variables
+      or config files instead.
+    languages: [python]
+    severity: ERROR
+
+  - id: no-shell-interpolation
+    pattern: |
+      run_command(f"...", ...)
+    message: >-
+      Avoid f-string shell commands — risk of injection. Use a list
+      of arguments instead: run_command(["cmd", arg], ...).
+    languages: [python]
+    severity: WARNING
+
+  # --- Tier 2: Code Quality ---
+
+  - id: check-returncode-after-run-command
+    patterns:
+      - pattern: |
+          $RESULT = run_command(...)
+          ...
+          $RESULT.stdout
+      - pattern-not: |
+          $RESULT = run_command(...)
+          ...
+          $RESULT.returncode
+          ...
+          $RESULT.stdout
+    message: >-
+      Check $RESULT.returncode before using $RESULT.stdout.
+      run_command() does not raise on failure by default.
+    languages: [python]
+    severity: WARNING
+
+  - id: check-tool-availability
+    patterns:
+      - pattern: run_command([$TOOL, ...], ...)
+      - pattern-not-inside: |
+          if shutil.which(...):
+              ...
+      - pattern-not-inside: |
+          if not shutil.which(...):
+              ...
+    paths:
+      exclude:
+        - tests/*
+        - aiorchestra/ai/*
+    message: >-
+      Check shutil.which($TOOL) before invoking external CLI tools.
+      The tool may not be installed.
+    languages: [python]
+    severity: WARNING
+
+  - id: use-dict-get-for-config
+    patterns:
+      - pattern: $CONFIG["$KEY"]
+      - metavariable-regex:
+          metavariable: $CONFIG
+          regex: (config|cfg|self\._config|ai_config)
+    paths:
+      exclude:
+        - tests/*
+    message: >-
+      Use $CONFIG.get("$KEY", default) instead of direct key access
+      to avoid KeyError on optional config values.
+    languages: [python]
+    severity: WARNING
+
+  - id: no-submodule-imports
+    patterns:
+      - pattern-either:
+          - pattern: from aiorchestra.ai._base import ...
+          - pattern: from aiorchestra.ai._cli import ...
+          - pattern: from aiorchestra.ai._registry import ...
+          - pattern: from aiorchestra.ai._claude_code import ...
+          - pattern: from aiorchestra.ai._codex import ...
+          - pattern: from aiorchestra.ai._gemini import ...
+          - pattern: from aiorchestra.ai._jules import ...
+          - pattern: from aiorchestra.ai._ollama import ...
+          - pattern: from aiorchestra.ai._opencode import ...
+          - pattern: from aiorchestra.ai._agents import ...
+    paths:
+      exclude:
+        - tests/*
+        - aiorchestra/ai/__init__.py
+        - aiorchestra/ai/_*.py
+    message: >-
+      Import from the public API: 'from aiorchestra.ai import ...'
+      instead of reaching into private submodules.
+    languages: [python]
+    severity: WARNING
+
+  # --- Tier 3: Maintainability ---
+
+  - id: no-deep-merge-bypass
+    patterns:
+      - pattern-either:
+          - pattern: $CONFIG.update(...)
+          - pattern: "{**$A, **$B}"
+    paths:
+      include:
+        - aiorchestra/config.py
+    message: >-
+      Use _deep_merge() for config dict merging, not .update() or
+      spread syntax. This preserves named list merging behavior.
+    languages: [python]
+    severity: WARNING
+
+  - id: no-magic-status-strings
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if "LGTM" in $X: ...
+          - pattern: |
+              if "deferred" in $X: ...
+          - pattern: |
+              if $X == "deferred": ...
+    paths:
+      exclude:
+        - tests/*
+    message: >-
+      Use named constants for status/sentinel values instead of
+      inline magic strings.
+    languages: [python]
+    severity: INFO

@@ -1,0 +1,82 @@
+name: Refactor Trigger
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  check-refactor-threshold:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Count recent merged PRs since last refactor
+        id: count
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Find the last refactoring issue
+            const refactorIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'refactoring',
+              state: 'all',
+              sort: 'created',
+              direction: 'desc',
+              per_page: 1,
+            });
+
+            let since = '2000-01-01T00:00:00Z';
+            if (refactorIssues.data.length > 0) {
+              since = refactorIssues.data[0].created_at;
+            }
+
+            // Count merged PRs since last refactoring issue
+            const pulls = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100,
+            });
+
+            const mergedSince = pulls.data.filter(
+              pr => pr.merged_at && new Date(pr.merged_at) > new Date(since)
+            );
+
+            core.setOutput('count', mergedSince.length);
+            core.info(`Merged PRs since last refactor: ${mergedSince.length}`);
+
+      - name: Create refactoring review issue
+        if: steps.count.outputs.count >= 10
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Refactoring review (${new Date().toISOString().slice(0, 10)})`,
+              labels: ['refactoring'],
+              body: [
+                '## Periodic Refactoring Review',
+                '',
+                `Triggered after ${context.payload.pull_request.number} merged PRs since last review.`,
+                '',
+                '### Checklist',
+                '',
+                '- [ ] **DRY review**: Identify duplicated logic across stages/modules',
+                '- [ ] **Complexity review**: Functions or modules that have grown too large',
+                '- [ ] **Dependency review**: Unused or redundant dependencies',
+                '- [ ] **Abstraction review**: 3+ similar patterns that should be unified',
+                '- [ ] **Dead code**: Unused imports, functions, or variables',
+                '- [ ] **Type coverage**: Public APIs missing type annotations',
+                '',
+                '### Reference',
+                '',
+                'Strategy: [ADR-002](https://github.com/ironharvy/think_tank/blob/main/decisions/002-refactoring-strategy.md)',
+              ].join('\n'),
+            });
