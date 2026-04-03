@@ -5,9 +5,12 @@ import types
 from aiorchestra.ai.provider import InvokeResult
 from aiorchestra.stages import review as rev_mod
 from aiorchestra.stages.review import (
+    _build_cross_review_provider_cfg,
     _check_human_required,
+    _resolve_cross_review_tier,
     _run_ai_review,
     _run_cross_model_review,
+    pick_cross_agent,
     review,
 )
 
@@ -330,3 +333,177 @@ def test_review_falls_back_to_legacy_when_no_tiers(monkeypatch):
 
     ok, feedback = review("owner/repo", "branch", config, issue=ISSUE)
     assert ok
+
+
+# ---------------------------------------------------------------------------
+# pick_cross_agent
+# ---------------------------------------------------------------------------
+
+
+def test_pick_cross_agent_claude_prefers_codex():
+    assert pick_cross_agent("claude-code") == "codex"
+
+
+def test_pick_cross_agent_codex_prefers_claude():
+    assert pick_cross_agent("codex") == "claude-code"
+
+
+def test_pick_cross_agent_jules_prefers_claude():
+    assert pick_cross_agent("jules") == "claude-code"
+
+
+def test_pick_cross_agent_unknown_falls_back_to_ollama():
+    assert pick_cross_agent("some-custom-thing") == "ollama"
+
+
+# ---------------------------------------------------------------------------
+# _build_cross_review_provider_cfg
+# ---------------------------------------------------------------------------
+
+
+def test_build_cfg_ollama_nested():
+    tier = {"provider": "ollama", "ollama": {"model": "phi3", "endpoint": "http://h:1234"}}
+    cfg = _build_cross_review_provider_cfg(tier)
+    assert cfg["provider"] == "ollama"
+    assert cfg["model"] == "phi3"
+    assert cfg["endpoint"] == "http://h:1234"
+
+
+def test_build_cfg_flat_codex():
+    tier = {"provider": "codex", "model": "o4-mini", "approval_mode": "suggest"}
+    cfg = _build_cross_review_provider_cfg(tier)
+    assert cfg["provider"] == "codex"
+    assert cfg["model"] == "o4-mini"
+
+
+# ---------------------------------------------------------------------------
+# _resolve_cross_review_tier
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_auto_picks_cross_agent():
+    tier = {"provider": "auto", "strict": True}
+    resolved = _resolve_cross_review_tier(tier, "claude-code", "owner/repo")
+    assert resolved["provider"] == "codex"
+    assert resolved["strict"] is True
+
+
+def test_resolve_auto_for_codex_picks_claude():
+    tier = {"provider": "auto"}
+    resolved = _resolve_cross_review_tier(tier, "codex", "owner/repo")
+    assert resolved["provider"] == "claude-code"
+
+
+def test_resolve_auto_for_jules_injects_repo():
+    tier = {"provider": "auto"}
+    resolved = _resolve_cross_review_tier(tier, "codex", "owner/repo")
+    # codex -> claude-code, no repo needed
+    assert "repo" not in resolved
+
+    tier2 = {"provider": "jules"}
+    resolved2 = _resolve_cross_review_tier(tier2, "claude-code", "owner/repo")
+    assert resolved2["repo"] == "owner/repo"
+
+
+def test_resolve_explicit_provider_unchanged():
+    tier = {"provider": "codex", "model": "o4-mini"}
+    resolved = _resolve_cross_review_tier(tier, "claude-code", "owner/repo")
+    assert resolved["provider"] == "codex"
+    assert resolved["model"] == "o4-mini"
+
+
+# ---------------------------------------------------------------------------
+# Strict mode (cross-model review)
+# ---------------------------------------------------------------------------
+
+
+def test_cross_model_strict_fails_when_unavailable(monkeypatch):
+    _patch_provider(monkeypatch, is_available=False)
+    monkeypatch.setattr(rev_mod, "render_template", lambda name, **kw: "prompt")
+
+    tier_cfg = {"provider": "codex", "strict": True}
+    ok, feedback = _run_cross_model_review(DIFF, tier_cfg, ISSUE, None)
+    assert not ok
+    assert "not available" in feedback
+
+
+def test_cross_model_strict_fails_on_invocation_error(monkeypatch):
+    _patch_provider(monkeypatch, success=False)
+    monkeypatch.setattr(rev_mod, "render_template", lambda name, **kw: "prompt")
+
+    tier_cfg = {"provider": "codex", "strict": True}
+    ok, feedback = _run_cross_model_review(DIFF, tier_cfg, ISSUE, None)
+    assert not ok
+
+
+def test_cross_model_non_strict_skips_when_unavailable(monkeypatch):
+    """Non-strict mode (default) gracefully skips unavailable providers."""
+    _patch_provider(monkeypatch, is_available=False)
+    monkeypatch.setattr(rev_mod, "render_template", lambda name, **kw: "prompt")
+
+    tier_cfg = {"provider": "codex", "strict": False}
+    ok, feedback = _run_cross_model_review(DIFF, tier_cfg, ISSUE, None)
+    assert ok
+
+
+# ---------------------------------------------------------------------------
+# Full tiered review with cross-agent tier
+# ---------------------------------------------------------------------------
+
+
+def test_review_cross_agent_tier_auto_selects_reviewer(monkeypatch):
+    """cross-agent-review tier with provider=auto picks a different agent."""
+    monkeypatch.setattr(
+        rev_mod,
+        "run_command",
+        lambda cmd, cwd=None, logger=None: types.SimpleNamespace(
+            returncode=0, stdout=DIFF, stderr=""
+        ),
+    )
+    _patch_provider(monkeypatch, output="LGTM")
+    monkeypatch.setattr(rev_mod, "render_template", lambda name, **kw: "prompt")
+
+    config = {
+        "ai": {"provider": "claude-code"},
+        "review": {
+            "tiers": [
+                {"name": "cross-agent-review", "enabled": True, "provider": "auto", "strict": False},
+            ]
+        },
+    }
+
+    ok, feedback = review("owner/repo", "branch", config, issue=ISSUE)
+    assert ok
+
+
+def test_review_cross_agent_codex_reviews_claude(monkeypatch):
+    """When claude-code implements, codex should be selected for cross-review."""
+    created_providers = []
+
+    monkeypatch.setattr(
+        rev_mod,
+        "run_command",
+        lambda cmd, cwd=None, logger=None: types.SimpleNamespace(
+            returncode=0, stdout=DIFF, stderr=""
+        ),
+    )
+    monkeypatch.setattr(rev_mod, "render_template", lambda name, **kw: "prompt")
+
+    def tracking_create_provider(cfg):
+        created_providers.append(cfg.get("provider"))
+        return FakeProvider(output="LGTM")
+
+    monkeypatch.setattr(rev_mod, "create_provider", tracking_create_provider)
+
+    config = {
+        "ai": {"provider": "claude-code"},
+        "review": {
+            "tiers": [
+                {"name": "cross-agent-review", "enabled": True, "provider": "auto"},
+            ]
+        },
+    }
+
+    ok, feedback = review("owner/repo", "branch", config, issue=ISSUE)
+    assert ok
+    assert "codex" in created_providers
