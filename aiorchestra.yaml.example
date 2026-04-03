@@ -15,12 +15,15 @@ test:
 review:
   enabled: true
   provider: "claude-code"
+  # Static analysis (T1) is disabled by default.  Flip enabled to true to
+  # run Semgrep & Bandit during the validate step (before a PR is created).
+  # The commands below override the built-in defaults; omit to use them.
   tiers:
     - name: "static-analysis"
       enabled: true
-      commands:
-        - "bandit -c pyproject.toml -r ."
-        - "semgrep scan --config auto --error ."
+      # commands:                  # optional — defaults to semgrep + bandit
+      #   - "bandit -c pyproject.toml -r ."
+      #   - "semgrep scan --config auto --error ."
 
 ci:
   enabled: true
