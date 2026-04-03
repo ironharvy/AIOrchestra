@@ -1,0 +1,4 @@
+# Codex Setup
+
+install:
+  - pip install -e ".[dev]"
