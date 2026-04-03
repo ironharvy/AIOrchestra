@@ -11,6 +11,7 @@ from aiorchestra._logging import setup_logging
 from aiorchestra.config import load_config
 from aiorchestra.dispatcher import Dispatcher
 from aiorchestra.pipeline import Pipeline
+from aiorchestra.stages.labels import ensure_labels
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +103,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds between scans in watch mode (default: 300)",
     )
 
+    setup = sub.add_parser(
+        "setup-labels",
+        help="Create AIOrchestra labels in one or more GitHub repos",
+    )
+    setup.add_argument(
+        "repos",
+        nargs="+",
+        help="GitHub repos (owner/repo) to create labels in",
+    )
+    setup.add_argument("--dry-run", action="store_true", help="Show what would be created")
+    setup.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+
     return parser
 
 
@@ -148,6 +161,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.watch:
             return _watch_loop(dispatcher.run, _resolve_poll_interval(args, config))
         return dispatcher.run()
+
+    if args.command == "setup-labels":
+        total_created = 0
+        for repo in args.repos:
+            log.info("Setting up labels in %s …", repo)
+            created = ensure_labels(repo, dry_run=args.dry_run)
+            if created:
+                log.info("Created %d label(s) in %s: %s", len(created), repo, ", ".join(created))
+            else:
+                log.info("All labels already exist in %s", repo)
+            total_created += len(created)
+        log.info("Done — %d label(s) created across %d repo(s)", total_created, len(args.repos))
+        return 0
 
     return 0
 

@@ -14,7 +14,7 @@ from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.osint import enrich_issue
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.implement import implement
-from aiorchestra.stages.labels import LABEL_WORKING, add_label, remove_label
+from aiorchestra.stages.labels import LABEL_WORKING, add_label, ensure_labels, remove_label
 from aiorchestra.stages.prepare import prepare_environment
 from aiorchestra.stages.publish import publish
 from aiorchestra.stages.review import review
@@ -78,6 +78,8 @@ class Pipeline:
 
     def run(self, issues: list[IssueData] | None = None) -> int:
         """Run the full pipeline. Returns 0 on success, 1 on failure."""
+        ensure_labels(self.repo, dry_run=self.dry_run)
+
         if issues is None:
             issues = discover_issues(
                 self.repo,
