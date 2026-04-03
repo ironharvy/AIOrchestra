@@ -7,8 +7,10 @@ discover → implement → validate → review → publish stages.
 
 - **Stages** (`aiorchestra/stages/`): Each stage is a module with a main entry
   function returning a typed result from `stages/types.py`.
-- **AI providers** (`aiorchestra/ai/`): All providers inherit `AIProvider` ABC
-  and implement `run()`. Use `create_provider()` factory, never instantiate directly.
+- **AI providers** (`aiorchestra/ai/`): Strategy pattern. `AIProvider` ABC in
+  `_base.py`, `CLIProvider` intermediate base in `_cli.py` for CLI-based
+  providers, concrete strategies in individual `_*.py` files. Factory in
+  `_registry.py`. All public API via `from aiorchestra.ai import ...`.
 - **Shell** (`stages/_shell.py`): All subprocess calls go through `run_command()`.
   Never call `subprocess.run()` directly outside this module.
 - **Config** (`config.py`): Three-layer merge (defaults → repo config → explicit).
@@ -25,13 +27,18 @@ discover → implement → validate → review → publish stages.
 
 ## Adding new AI providers
 
-1. Create class inheriting `AIProvider` in `aiorchestra/ai/`
-2. Implement `run()` with exact signature from ABC
-3. Register in `create_provider()` factory
-4. Add `available()` check if provider needs external service
+1. Create `aiorchestra/ai/_your_provider.py`
+2. For CLI-based providers: inherit `CLIProvider` from `_cli.py`
+3. For non-CLI providers: inherit `AIProvider` from `_base.py`
+4. Implement `run(prompt, *, system=None, cwd=None) -> InvokeResult`
+5. Register in `_registry.py` factory
+6. Export in `__init__.py`
+7. Add `available()` check if provider needs external service
+8. Add tests in `tests/test_your_provider.py`
 
 ## Conventions
 
+- Import from package: `from aiorchestra.ai import AIProvider, create_provider`
 - Check `shutil.which()` before invoking external CLI tools
 - Return failure results, don't raise exceptions in stages
 - Use `config.get(key, default)` not `config[key]` for optional values

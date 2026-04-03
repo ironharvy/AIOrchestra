@@ -10,12 +10,13 @@ rules:
     paths:
       exclude:
         - aiorchestra/stages/_shell.py
-        - aiorchestra/ai/*.py
+        - aiorchestra/ai/_cli.py
+        - aiorchestra/ai/_ollama.py
         - tests/*
     message: >-
       Direct subprocess.run() call detected. Use run_command() from
-      aiorchestra.stages._shell instead for consistent logging and
-      error handling.
+      aiorchestra.stages._shell instead, or CLIProvider base class
+      for AI providers.
     languages: [python]
     severity: ERROR
 
@@ -74,7 +75,7 @@ rules:
     paths:
       exclude:
         - tests/*
-        - aiorchestra/ai/*.py
+        - aiorchestra/ai/*
     message: >-
       Check shutil.which($TOOL) before invoking external CLI tools.
       The tool may not be installed.
@@ -93,6 +94,30 @@ rules:
     message: >-
       Use $CONFIG.get("$KEY", default) instead of direct key access
       to avoid KeyError on optional config values.
+    languages: [python]
+    severity: WARNING
+
+  - id: no-submodule-imports
+    patterns:
+      - pattern-either:
+          - pattern: from aiorchestra.ai._base import ...
+          - pattern: from aiorchestra.ai._cli import ...
+          - pattern: from aiorchestra.ai._registry import ...
+          - pattern: from aiorchestra.ai._claude_code import ...
+          - pattern: from aiorchestra.ai._codex import ...
+          - pattern: from aiorchestra.ai._gemini import ...
+          - pattern: from aiorchestra.ai._jules import ...
+          - pattern: from aiorchestra.ai._ollama import ...
+          - pattern: from aiorchestra.ai._opencode import ...
+          - pattern: from aiorchestra.ai._agents import ...
+    paths:
+      exclude:
+        - tests/*
+        - aiorchestra/ai/__init__.py
+        - aiorchestra/ai/_*.py
+    message: >-
+      Import from the public API: 'from aiorchestra.ai import ...'
+      instead of reaching into private submodules.
     languages: [python]
     severity: WARNING
 

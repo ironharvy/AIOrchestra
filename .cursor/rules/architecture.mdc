@@ -5,16 +5,19 @@ alwaysApply: true
 
 # Architecture Conventions
 
-This project uses a pipeline/stages pattern. Follow these conventions.
+This project uses a pipeline/stages pattern with Strategy-based AI providers.
 
 ## Structure
 
 - **Stages** (`aiorchestra/stages/`): Each stage is a module with a main entry
   function returning a typed result from `stages/types.py`.
-- **AI providers** (`aiorchestra/ai/`): All providers inherit `AIProvider` ABC
-  and implement `run()`. Use `create_provider()` factory, never instantiate directly.
+- **AI providers** (`aiorchestra/ai/`): Strategy pattern hierarchy:
+  - `AIProvider` ABC (`_base.py`) → `CLIProvider` (`_cli.py`) → concrete providers
+  - Non-CLI providers inherit `AIProvider` directly
+  - Factory: `create_provider()` in `_registry.py`
+  - Import everything from `aiorchestra.ai` (not submodules)
 - **Shell**: All subprocess calls go through `run_command()` in `stages/_shell.py`.
-  Never call `subprocess.run()` directly outside that module or `ai/*.py`.
+  Never call `subprocess.run()` directly outside that module or `ai/_cli.py`.
 - **Config**: Three-layer merge via `_deep_merge()`. Never use `dict.update()`.
 
 ## Rules
@@ -29,5 +32,6 @@ This project uses a pipeline/stages pattern. Follow these conventions.
 ## Adding features
 
 - New stage: create module in `stages/`, use types from `types.py`, add tests
-- New provider: inherit `AIProvider`, implement `run()`, register in factory
+- New CLI provider: inherit `CLIProvider`, register in `_registry.py`, export in `__init__.py`
+- New non-CLI provider: inherit `AIProvider`, register in `_registry.py`, export in `__init__.py`
 - New template: add to `aiorchestra/templates/`, render via `render_template()`
