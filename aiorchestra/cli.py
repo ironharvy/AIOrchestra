@@ -65,8 +65,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     run.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
-    run.add_argument("--watch", action="store_true", help="Run continuously, polling for new issues")
-    run.add_argument("--poll-interval", type=int, default=None, help="Seconds between scans in watch mode (default: 300)")
+    run.add_argument(
+        "--watch", action="store_true", help="Run continuously, polling for new issues"
+    )
+    run.add_argument(
+        "--poll-interval",
+        type=int,
+        default=None,
+        help="Seconds between scans in watch mode (default: 300)",
+    )
 
     dispatch = sub.add_parser(
         "dispatch",
@@ -85,9 +92,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dispatch.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     dispatch.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
-    dispatch.add_argument("--watch", action="store_true", help="Run continuously, polling for new issues")
-    dispatch.add_argument("--poll-interval", type=int, default=None, help="Seconds between scans in watch mode (default: 300)")
-
+    dispatch.add_argument(
+        "--watch", action="store_true", help="Run continuously, polling for new issues"
+    )
+    dispatch.add_argument(
+        "--poll-interval",
+        type=int,
+        default=None,
+        help="Seconds between scans in watch mode (default: 300)",
+    )
 
     return parser
 
