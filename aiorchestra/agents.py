@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 DEFAULT_AGENT_FAMILY = "claude"
-KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "gemini", "jules")
+KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "gemini", "jules", "opencode")
 
 
 def normalize_agent_family(value: str | None) -> str:

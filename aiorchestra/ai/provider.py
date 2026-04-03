@@ -438,6 +438,56 @@ class OllamaProvider(AIProvider):
 
 
 # ---------------------------------------------------------------------------
+# OpenCode CLI
+# ---------------------------------------------------------------------------
+
+
+class OpenCodeProvider(AIProvider):
+    """Invokes the ``opencode`` CLI in non-interactive mode.
+
+    OpenCode is a terminal-based AI coding agent.  The ``--print`` flag runs
+    it non-interactively, writing the result to stdout.  ``--yes`` auto-approves
+    tool use without interactive confirmation.
+    """
+
+    def run(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        capture_output: bool = False,
+        cwd: str | None = None,
+    ) -> InvokeResult:
+        cmd: list[str] = ["opencode", "run"]
+
+        if self._config.get("yes", True):
+            cmd.append("--yes")
+
+        model = self._config.get("model")
+        if model:
+            cmd.extend(["--model", model])
+
+        cmd.append(prompt)
+
+        log.info("Invoking OpenCode CLI...")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+        if result.returncode != 0:
+            log.error("OpenCode CLI failed: %s", result.stderr.strip())
+            return InvokeResult(success=False, output=result.stderr)
+
+        return _parse_clarification(result.stdout)
+
+    def available(self) -> bool:
+        return shutil.which("opencode") is not None
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
@@ -447,6 +497,7 @@ _PROVIDERS: dict[str, type[AIProvider]] = {
     "gemini": GeminiProvider,
     "jules": JulesProvider,
     "ollama": OllamaProvider,
+    "opencode": OpenCodeProvider,
 }
 
 
