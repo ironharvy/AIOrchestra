@@ -445,9 +445,9 @@ class OllamaProvider(AIProvider):
 class OpenCodeProvider(AIProvider):
     """Invokes the ``opencode`` CLI in non-interactive mode.
 
-    OpenCode is a terminal-based AI coding agent.  The ``--print`` flag runs
-    it non-interactively, writing the result to stdout.  ``--yes`` auto-approves
-    tool use without interactive confirmation.
+    OpenCode is a terminal-based AI coding agent.  Passing a prompt directly
+    to ``opencode run`` runs it non-interactively, writing the result to
+    stdout.  ``--yes`` auto-approves tool use without interactive confirmation.
     """
 
     def run(
