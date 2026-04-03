@@ -15,6 +15,8 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",
+    "bandit>=1.7",
+    "semgrep>=1.45",
 ]
 
 [project.scripts]
@@ -22,6 +24,10 @@ aiorchestra = "aiorchestra.cli:main"
 
 [tool.ruff]
 line-length = 100
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
