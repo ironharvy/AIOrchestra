@@ -213,6 +213,7 @@ The active AI provider determines the required agent-family label. Provider IDs 
 | `claude-code`, `claude-api` | `claude` | `claude` |
 | `codex`, `codex-v2` | `codex` | `codex` |
 | `jules` | `jules` | `jules` |
+| `opencode` | `opencode` | `opencode` |
 
 `resolve_agent()` scans issue labels for a known agent name — first match wins. If no label matches, the configured default is used.
 

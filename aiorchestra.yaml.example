@@ -4,9 +4,15 @@
 label: "claude"
 
 ai:
-  provider: "claude-code"   # uses the `claude` CLI
-  model: "sonnet"           # model hint for --model flag
+  provider: "claude-code"   # "claude-code", "codex", "gemini", "opencode", "jules", "ollama"
+  model: "sonnet"           # model hint forwarded to the provider's --model flag
   max_retries: 3
+
+# OpenCode provider example:
+# ai:
+#   provider: "opencode"
+#   model: "gpt-4o"         # optional — passed as --model
+#   yes: true               # auto-approve tool use (default: true)
 
 test:
   command: "pytest"
