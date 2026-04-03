@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from aiorchestra.ai.provider import InvokeResult, create_provider
+from aiorchestra.ai import InvokeResult, create_provider
 from aiorchestra.stages.types import IssueData, PipelineConfig
 from aiorchestra.templates import render_template
 

@@ -1,6 +1,6 @@
 """Tests for the multi-repo dispatcher and agent resolution."""
 
-from aiorchestra.agents import normalize_agent_family, resolve_agent
+from aiorchestra.ai import normalize_agent_family, resolve_agent
 from aiorchestra.cli import build_parser
 from aiorchestra.dispatcher import Dispatcher
 
@@ -262,7 +262,7 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
         osint_context="",
         repo=None,
     ):
-        from aiorchestra.ai.claude import InvokeResult
+        from aiorchestra.ai import InvokeResult
 
         calls.append(("implement", issue["number"]))
         return InvokeResult(success=True)

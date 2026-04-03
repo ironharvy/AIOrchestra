@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, TypeAlias, TypedDict
 
 if TYPE_CHECKING:
-    from aiorchestra.ai.provider import InvokeResult
+    from aiorchestra.ai import InvokeResult
 
 
 class _RequiredIssueData(TypedDict):

@@ -2,7 +2,7 @@
 
 import logging
 
-from aiorchestra.agents import resolve_agent
+from aiorchestra.ai import resolve_agent
 from aiorchestra.pipeline import Pipeline
 from aiorchestra.stages.discover import discover_all_issues
 from aiorchestra.stages.types import PipelineConfig
