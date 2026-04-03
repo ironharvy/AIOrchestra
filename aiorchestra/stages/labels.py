@@ -94,9 +94,8 @@ def remove_label(repo: str, issue_number: int, label: str) -> bool:
 
 
 def swap_label(repo: str, issue_number: int, remove: str, add: str) -> bool:
-    """Remove one label and add another. Returns True only if both operations succeed."""
-    if not remove_label(repo, issue_number, remove):
-        return False
+    """Remove one label and add another. Returns True only if the add succeeded."""
+    remove_label(repo, issue_number, remove)  # best-effort; missing label is fine
     return add_label(repo, issue_number, add)
 
 
