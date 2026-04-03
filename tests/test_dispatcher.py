@@ -254,7 +254,13 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     def fake_implement(
-        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None
+        issue,
+        config,
+        prompt_name="implement",
+        error_text=None,
+        repo_root=None,
+        osint_context="",
+        repo=None,
     ):
         from aiorchestra.ai.claude import InvokeResult
 

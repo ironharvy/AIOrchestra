@@ -273,9 +273,13 @@ class JulesProvider(AIProvider):
 
         # 1. Create the remote session.
         create_cmd = [
-            "jules", "remote", "new",
-            "--repo", repo,
-            "--session", prompt,
+            "jules",
+            "remote",
+            "new",
+            "--repo",
+            repo,
+            "--session",
+            prompt,
         ]
         log.info("Creating Jules session for repo=%s...", repo)
         create = subprocess.run(

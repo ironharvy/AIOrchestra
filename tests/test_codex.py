@@ -103,7 +103,10 @@ def test_codex_clarification(monkeypatch):
 
 def test_codex_available(monkeypatch):
     """available() checks for codex on PATH."""
-    monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+    monkeypatch.setattr(
+        "aiorchestra.ai.provider.shutil.which",
+        lambda name: "/usr/bin/codex" if name == "codex" else None,
+    )
     assert _make_provider().available()
 
     monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: None)

@@ -101,7 +101,10 @@ def test_gemini_clarification(monkeypatch):
 
 def test_gemini_available(monkeypatch):
     """available() checks for gemini on PATH."""
-    monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: "/usr/bin/gemini" if name == "gemini" else None)
+    monkeypatch.setattr(
+        "aiorchestra.ai.provider.shutil.which",
+        lambda name: "/usr/bin/gemini" if name == "gemini" else None,
+    )
     assert _make_provider().available()
 
     monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: None)

@@ -66,7 +66,9 @@ def test_jules_session_failed_status(monkeypatch):
         if cmd[1:3] == ["remote", "new"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="sess-1\n", stderr="")
         if cmd[1:3] == ["remote", "status"]:
-            return subprocess.CompletedProcess(cmd, 0, stdout="Status: failed\nError: OOM", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="Status: failed\nError: OOM", stderr=""
+            )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
@@ -181,7 +183,10 @@ def test_jules_clarification(monkeypatch):
 
 def test_jules_available(monkeypatch):
     """available() checks for jules on PATH."""
-    monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: "/usr/bin/jules" if name == "jules" else None)
+    monkeypatch.setattr(
+        "aiorchestra.ai.provider.shutil.which",
+        lambda name: "/usr/bin/jules" if name == "jules" else None,
+    )
     assert _make_provider().available()
 
     monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: None)

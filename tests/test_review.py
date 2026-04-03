@@ -359,6 +359,7 @@ def test_pick_cross_agent_gemini_prefers_claude():
 def test_pick_cross_agent_claude_has_gemini_in_fallback():
     """Gemini is in the preference list for claude (after codex)."""
     from aiorchestra.stages.review import _CROSS_AGENT_PREFERENCES
+
     assert "gemini" in _CROSS_AGENT_PREFERENCES["claude"]
 
 
@@ -477,7 +478,12 @@ def test_review_cross_agent_tier_auto_selects_reviewer(monkeypatch):
         "ai": {"provider": "claude-code"},
         "review": {
             "tiers": [
-                {"name": "cross-agent-review", "enabled": True, "provider": "auto", "strict": False},
+                {
+                    "name": "cross-agent-review",
+                    "enabled": True,
+                    "provider": "auto",
+                    "strict": False,
+                },
             ]
         },
     }
