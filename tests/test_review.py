@@ -2,7 +2,7 @@
 
 import types
 
-from aiorchestra.ai.provider import InvokeResult
+from aiorchestra.ai import InvokeResult
 from aiorchestra.stages import review as rev_mod
 from aiorchestra.stages.review import (
     _build_cross_review_provider_cfg,

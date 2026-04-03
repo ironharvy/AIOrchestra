@@ -2,7 +2,7 @@
 
 import subprocess
 
-from aiorchestra.ai.provider import JulesProvider, create_provider
+from aiorchestra.ai import JulesProvider, create_provider
 
 
 def _make_provider(**overrides):
@@ -24,8 +24,8 @@ def test_jules_full_flow(monkeypatch):
             return subprocess.CompletedProcess(cmd, 0, stdout="Changes pulled\n", stderr="")
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="unknown")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
-    monkeypatch.setattr("aiorchestra.ai.provider.time.sleep", lambda _: None)
+    monkeypatch.setattr("aiorchestra.ai._jules.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._jules.time.sleep", lambda _: None)
 
     provider = _make_provider()
     result = provider.run("implement feature X", cwd="/tmp/repo")
@@ -48,7 +48,7 @@ def test_jules_session_creation_failure(monkeypatch):
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="auth failed")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._jules.subprocess.run", fake_run)
 
     provider = _make_provider()
     result = provider.run("implement feature")
@@ -71,8 +71,8 @@ def test_jules_session_failed_status(monkeypatch):
             )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
-    monkeypatch.setattr("aiorchestra.ai.provider.time.sleep", lambda _: None)
+    monkeypatch.setattr("aiorchestra.ai._jules.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._jules.time.sleep", lambda _: None)
 
     provider = _make_provider()
     result = provider.run("do something")
@@ -97,8 +97,8 @@ def test_jules_polling_multiple_rounds(monkeypatch):
             return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="unknown")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
-    monkeypatch.setattr("aiorchestra.ai.provider.time.sleep", lambda _: None)
+    monkeypatch.setattr("aiorchestra.ai._jules.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._jules.time.sleep", lambda _: None)
 
     provider = _make_provider()
     result = provider.run("fix tests")
@@ -123,9 +123,9 @@ def test_jules_timeout(monkeypatch):
         elapsed[0] += 60  # Jump 60s per call
         return val
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
-    monkeypatch.setattr("aiorchestra.ai.provider.time.sleep", lambda _: None)
-    monkeypatch.setattr("aiorchestra.ai.provider.time.monotonic", fake_monotonic)
+    monkeypatch.setattr("aiorchestra.ai._jules.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._jules.time.sleep", lambda _: None)
+    monkeypatch.setattr("aiorchestra.ai._jules.time.monotonic", fake_monotonic)
 
     provider = _make_provider(timeout=120)
     result = provider.run("long task")
@@ -146,8 +146,8 @@ def test_jules_pull_failure(monkeypatch):
             return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="merge conflict")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
-    monkeypatch.setattr("aiorchestra.ai.provider.time.sleep", lambda _: None)
+    monkeypatch.setattr("aiorchestra.ai._jules.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._jules.time.sleep", lambda _: None)
 
     provider = _make_provider()
     result = provider.run("update deps")
@@ -170,8 +170,8 @@ def test_jules_clarification(monkeypatch):
             )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
-    monkeypatch.setattr("aiorchestra.ai.provider.time.sleep", lambda _: None)
+    monkeypatch.setattr("aiorchestra.ai._jules.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._jules.time.sleep", lambda _: None)
 
     provider = _make_provider()
     result = provider.run("migrate db")
@@ -184,12 +184,12 @@ def test_jules_clarification(monkeypatch):
 def test_jules_available(monkeypatch):
     """available() checks for jules on PATH."""
     monkeypatch.setattr(
-        "aiorchestra.ai.provider.shutil.which",
+        "aiorchestra.ai._jules.shutil.which",
         lambda name: "/usr/bin/jules" if name == "jules" else None,
     )
     assert _make_provider().available()
 
-    monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: None)
+    monkeypatch.setattr("aiorchestra.ai._jules.shutil.which", lambda name: None)
     assert not _make_provider().available()
 
 

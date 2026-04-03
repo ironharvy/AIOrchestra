@@ -5,7 +5,7 @@ import json
 import logging
 import time
 
-from aiorchestra.agents import normalize_agent_family
+from aiorchestra.ai import normalize_agent_family
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.labels import SKIP_LABELS
 from aiorchestra.stages.types import IssueData

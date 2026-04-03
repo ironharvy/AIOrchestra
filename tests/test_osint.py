@@ -163,7 +163,7 @@ def test_gather_with_working_collectors(monkeypatch):
 
 def test_gather_with_ollama_summary(monkeypatch):
     """When Ollama is available, raw output gets summarised."""
-    from aiorchestra.ai.provider import InvokeResult
+    from aiorchestra.ai import InvokeResult
 
     monkeypatch.setattr("aiorchestra.stages.osint.shutil.which", lambda _: "/usr/bin/fake")
 

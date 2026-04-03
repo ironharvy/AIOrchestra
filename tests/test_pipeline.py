@@ -4,7 +4,7 @@ import logging
 import os
 import types
 
-from aiorchestra.ai.claude import InvokeResult
+from aiorchestra.ai import InvokeResult
 from aiorchestra.pipeline import Pipeline
 
 
@@ -311,7 +311,7 @@ def test_invoke_claude_refuses_without_permissions(monkeypatch, caplog):
     With skip_permissions=False and no allowed_tools, the CLI must refuse
     to run and return failure — not just warn and proceed.
     """
-    from aiorchestra.ai.claude import _invoke_cli
+    from aiorchestra.ai import ClaudeCodeProvider
 
     cli_invoked = False
 
@@ -320,14 +320,12 @@ def test_invoke_claude_refuses_without_permissions(monkeypatch, caplog):
         cli_invoked = True
         return types.SimpleNamespace(returncode=0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", spy_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", spy_run)
 
-    with caplog.at_level(logging.ERROR, logger="aiorchestra.ai.provider"):
-        result = _invoke_cli(
-            "test prompt",
-            {"skip_permissions": False},
-            capture_output=False,
-        )
+    provider = ClaudeCodeProvider({"skip_permissions": False})
+
+    with caplog.at_level(logging.ERROR, logger="aiorchestra.ai._claude_code"):
+        result = provider.run("test prompt")
 
     assert result.success is False
     assert not cli_invoked

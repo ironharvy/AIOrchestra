@@ -2,7 +2,7 @@
 
 import json
 
-from aiorchestra.ai.ollama import invoke_ollama, ollama_available
+from aiorchestra.ai import OllamaProvider, create_provider
 
 
 class FakeResponse:
@@ -22,6 +22,11 @@ class FakeResponse:
         pass
 
 
+def _make_provider(**overrides):
+    config = {"provider": "ollama", **overrides}
+    return OllamaProvider(config)
+
+
 def test_invoke_ollama_success(monkeypatch):
     """Successful generation returns response text."""
     captured = {}
@@ -32,11 +37,13 @@ def test_invoke_ollama_success(monkeypatch):
         captured["timeout"] = timeout
         return FakeResponse(json.dumps({"response": "summary result"}).encode())
 
-    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai._ollama.urllib.request.urlopen", fake_urlopen)
 
-    result = invoke_ollama("test prompt", {"model": "phi3", "endpoint": "http://host:11434"})
+    provider = _make_provider(model="phi3", endpoint="http://host:11434")
+    result = provider.run("test prompt")
 
-    assert result == "summary result"
+    assert result.success
+    assert result.output == "summary result"
     assert captured["body"]["model"] == "phi3"
     assert captured["body"]["prompt"] == "test prompt"
     assert captured["body"]["stream"] is False
@@ -50,60 +57,70 @@ def test_invoke_ollama_with_system_prompt(monkeypatch):
         captured["body"] = json.loads(req.data.decode())
         return FakeResponse(json.dumps({"response": "ok"}).encode())
 
-    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai._ollama.urllib.request.urlopen", fake_urlopen)
 
-    invoke_ollama("prompt", {}, system="You are an analyst")
+    provider = _make_provider()
+    provider.run("prompt", system="You are an analyst")
     assert captured["body"]["system"] == "You are an analyst"
 
 
 def test_invoke_ollama_network_error(monkeypatch):
-    """Network failure returns None gracefully."""
+    """Network failure returns failure result."""
     import urllib.error
 
     def fake_urlopen(req, timeout=None):
         raise urllib.error.URLError("Connection refused")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai._ollama.urllib.request.urlopen", fake_urlopen)
 
-    result = invoke_ollama("test", {})
-    assert result is None
+    provider = _make_provider()
+    result = provider.run("test")
+    assert not result.success
 
 
 def test_invoke_ollama_empty_response(monkeypatch):
-    """Empty model response returns None."""
+    """Empty model response returns failure."""
 
     def fake_urlopen(req, timeout=None):
         return FakeResponse(json.dumps({"response": ""}).encode())
 
-    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai._ollama.urllib.request.urlopen", fake_urlopen)
 
-    result = invoke_ollama("test", {})
-    assert result is None
+    provider = _make_provider()
+    result = provider.run("test")
+    assert not result.success
 
 
 def test_invoke_ollama_timeout(monkeypatch):
-    """Timeout returns None."""
+    """Timeout returns failure."""
 
     def fake_urlopen(req, timeout=None):
         raise TimeoutError()
 
-    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("aiorchestra.ai._ollama.urllib.request.urlopen", fake_urlopen)
 
-    result = invoke_ollama("test", {"timeout": 5})
-    assert result is None
+    provider = _make_provider(timeout=5)
+    result = provider.run("test")
+    assert not result.success
 
 
 def test_ollama_available_success(monkeypatch):
     def fake_urlopen(req, timeout=None):
         return FakeResponse(b"{}", status=200)
 
-    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
-    assert ollama_available({}) is True
+    monkeypatch.setattr("aiorchestra.ai._ollama.urllib.request.urlopen", fake_urlopen)
+    assert _make_provider().available() is True
 
 
 def test_ollama_available_failure(monkeypatch):
     def fake_urlopen(req, timeout=None):
         raise ConnectionError()
 
-    monkeypatch.setattr("aiorchestra.ai.provider.urllib.request.urlopen", fake_urlopen)
-    assert ollama_available({}) is False
+    monkeypatch.setattr("aiorchestra.ai._ollama.urllib.request.urlopen", fake_urlopen)
+    assert _make_provider().available() is False
+
+
+def test_create_provider_ollama():
+    """Factory creates OllamaProvider for provider='ollama'."""
+    provider = create_provider({"provider": "ollama"})
+    assert isinstance(provider, OllamaProvider)
