@@ -3,6 +3,7 @@
 import logging
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -131,7 +132,7 @@ def _install_deps(repo_dir: Path) -> None:
     run_command(["pip", "install", "pytest", "ruff"], check=False, cwd=cwd, logger=log)
 
 
-def _require_success(result) -> None:
+def _require_success(result: subprocess.CompletedProcess[str]) -> None:
     if result.returncode == 0:
         return
 
