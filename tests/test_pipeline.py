@@ -63,7 +63,7 @@ def test_validation_retry_uses_fix_validation_prompt(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     def fake_implement(
-        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None
     ):
         calls.append(("implement", prompt_name, error_text, repo_root))
         return InvokeResult(success=True)
@@ -118,7 +118,7 @@ def test_ci_fix_revalidates_and_republishes(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     def fake_implement(
-        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None
     ):
         calls.append(("implement", prompt_name, error_text, repo_root))
         return InvokeResult(success=True)
@@ -188,7 +188,7 @@ def test_no_changes_after_implement_aborts_immediately(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     def fake_implement(
-        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None
     ):
         calls.append(("implement", prompt_name, error_text, repo_root))
         return InvokeResult(success=True)

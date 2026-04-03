@@ -16,7 +16,7 @@ def normalize_agent_family(value: str | None) -> str:
     if not normalized:
         return DEFAULT_AGENT_FAMILY
 
-    for family in ("claude", "codex"):
+    for family in KNOWN_AGENTS:
         if family in normalized:
             return family
 

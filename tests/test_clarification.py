@@ -222,7 +222,7 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
     clarification_msg = "Should this be sync or async?"
 
     def fake_implement(
-        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None
     ):
         calls.append(("implement", issue["number"]))
         if issue["number"] == 10:
@@ -302,7 +302,7 @@ def test_pipeline_process_issue_returns_deferred(monkeypatch, tmp_path):
     )
 
     def fake_implement(
-        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None
     ):
         return InvokeResult(
             success=True,
@@ -417,7 +417,7 @@ def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="": (
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: (
             InvokeResult(success=True)
         ),
     )
@@ -474,7 +474,7 @@ def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="": (
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: (
             InvokeResult(success=False)
         ),
     )
