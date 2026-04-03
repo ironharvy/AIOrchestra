@@ -1,12 +1,49 @@
 """CLI entry point for AIOrchestra."""
 
 import argparse
+import logging
+import signal
 import sys
+import time
+from typing import Callable
 
 from aiorchestra._logging import setup_logging
 from aiorchestra.config import load_config
 from aiorchestra.dispatcher import Dispatcher
 from aiorchestra.pipeline import Pipeline
+
+log = logging.getLogger(__name__)
+
+
+def _watch_loop(fn: Callable[[], int], poll_interval: int) -> int:
+    """Call *fn* in a loop, sleeping *poll_interval* seconds between cycles.
+
+    Handles SIGINT/SIGTERM so the current cycle finishes before exit.
+    """
+    shutdown = False
+
+    def _handle_signal(sig: int, _frame: object) -> None:
+        nonlocal shutdown
+        log.info("Received signal %d — finishing current cycle then exiting", sig)
+        shutdown = True
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    log.info("Watch mode active — polling every %ds", poll_interval)
+
+    while not shutdown:
+        fn()
+        if shutdown:
+            break
+        log.info("Next scan in %ds", poll_interval)
+        for _ in range(poll_interval):
+            if shutdown:
+                break
+            time.sleep(1)
+
+    log.info("Watch mode stopped")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +65,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     run.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    run.add_argument(
+        "--watch", action="store_true", help="Run continuously, polling for new issues"
+    )
+    run.add_argument(
+        "--poll-interval",
+        type=int,
+        default=None,
+        help="Seconds between scans in watch mode (default: 300)",
+    )
 
     dispatch = sub.add_parser(
         "dispatch",
@@ -46,8 +92,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dispatch.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     dispatch.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    dispatch.add_argument(
+        "--watch", action="store_true", help="Run continuously, polling for new issues"
+    )
+    dispatch.add_argument(
+        "--poll-interval",
+        type=int,
+        default=None,
+        help="Seconds between scans in watch mode (default: 300)",
+    )
 
     return parser
+
+
+def _resolve_poll_interval(args: argparse.Namespace, config: dict) -> int:
+    if args.poll_interval is not None:
+        return args.poll_interval
+    return config.get("watch", {}).get("poll_interval", 300)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             workspace=args.workspace,
         )
+        if args.watch:
+            return _watch_loop(pipeline.run, _resolve_poll_interval(args, config))
         return pipeline.run()
 
     if args.command == "dispatch":
@@ -82,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             workspace=args.workspace,
         )
+        if args.watch:
+            return _watch_loop(dispatcher.run, _resolve_poll_interval(args, config))
         return dispatcher.run()
 
     return 0

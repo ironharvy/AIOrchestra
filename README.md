@@ -1,6 +1,6 @@
 # AIOrchestra
 
-A lightweight wrapper that orchestrates AI coding agents with deterministic shell automation. Instead of burning tokens on git commands and test runs, AIOrchestra handles the predictable work and only invokes the AI when intelligence is actually needed.
+A lightweight, always-running orchestrator that watches for GitHub issues and drives AI coding agents with deterministic shell automation. Start it on your home machine, walk away — when you file an issue from a plane hours later, it picks it up, implements, tests, and opens a PR. Instead of burning tokens on git commands and test runs, AIOrchestra handles the predictable work and only invokes the AI when intelligence is actually needed.
 
 ## How it works
 
@@ -79,21 +79,32 @@ pip install -e .
 ## Usage
 
 ```bash
-# Process all issues labeled "claude" in a repo
+# Run continuously — scan all your repos every 5 minutes
+aiorchestra dispatch --watch
+
+# Watch a single repo
+aiorchestra run --repo owner/repo --label claude --watch
+
+# Custom poll interval (seconds)
+aiorchestra dispatch --watch --poll-interval 120
+
+# One-shot: process all issues labeled "claude" in a repo
 aiorchestra run --repo owner/repo --label claude
 
-# Process a specific issue
+# One-shot: process a specific issue
 aiorchestra run --repo owner/repo --issue 42
 
 # Dry run — show what would happen without executing
 aiorchestra run --repo owner/repo --label claude --dry-run
 
-# Scan all your repos for "aiorchestra"-labeled issues and dispatch
+# Scan all your repos for "aiorchestra"-labeled issues (one-shot)
 aiorchestra dispatch
 
 # Dispatch for a specific owner
 aiorchestra dispatch --owner myorg
 ```
+
+`--watch` turns any command into a long-running loop. It polls for new issues, processes them, sleeps for `--poll-interval` seconds (default 300), and repeats. SIGINT/SIGTERM finishes the current cycle before exiting — no orphaned child processes or stuck labels.
 
 Branches are created as `<agent>/<issue-number>`, for example `claude/42` or `codex/42`.
 Issues must include the normalized agent-family label derived from `ai.provider`. Assignment to an agent is optional metadata.
@@ -184,6 +195,15 @@ osint:
     timeout: 120
 ```
 
+### Watch mode
+
+```yaml
+watch:
+  poll_interval: 300    # seconds between scans (default: 5 minutes)
+```
+
+CLI `--poll-interval` overrides this value.
+
 ### Agent routing
 
 The active AI provider determines the required agent-family label. Provider IDs are normalized into families:
@@ -226,7 +246,7 @@ your-project/
 ```
 aiorchestra/
 ├── __init__.py
-├── cli.py              # CLI entry point (run, dispatch)
+├── cli.py              # CLI entry point (run, dispatch, --watch loop)
 ├── config.py           # Config loader (3-layer merge)
 ├── agents.py           # Agent family normalization & routing
 ├── dispatcher.py       # Multi-repo issue discovery & dispatch
@@ -260,8 +280,47 @@ aiorchestra/
     └── fix_review.md
 ```
 
+## Running as a service
+
+`--watch` keeps AIOrchestra running in the foreground. For a proper background service, use systemd, tmux, or cron.
+
+**systemd** (recommended for headless machines):
+
+```ini
+# ~/.config/systemd/user/aiorchestra.service
+[Unit]
+Description=AIOrchestra watch daemon
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/aiorchestra dispatch --watch
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now aiorchestra
+journalctl --user -u aiorchestra -f   # tail logs
+```
+
+**tmux / screen** (quick and simple):
+
+```bash
+tmux new -d -s aiorchestra 'aiorchestra dispatch --watch'
+```
+
+**cron** (if you prefer one-shot runs):
+
+```bash
+*/5 * * * * aiorchestra dispatch 2>&1 | logger -t aiorchestra
+```
+
 ## Design principles
 
+- **Always-on by design**: Start it, walk away — `--watch` continuously polls for new issues
 - **Deterministic by default**: Only invoke AI when the task genuinely requires reasoning
 - **Token-conscious**: Every shell command that replaces an AI call saves tokens
 - **Retry with context**: Failures feed error output back to the AI — it learns from each attempt
