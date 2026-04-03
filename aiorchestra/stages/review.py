@@ -14,8 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from aiorchestra.agents import normalize_agent_family
-from aiorchestra.ai.provider import create_provider
+from aiorchestra.ai import create_provider, normalize_agent_family
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.types import FeedbackResult, IssueData, PipelineConfig
 from aiorchestra.templates import render_template
@@ -56,7 +55,7 @@ def _run_ai_review(
 
     ai_config = {**config.get("ai", {}), **tier_cfg}
     provider = create_provider(ai_config)
-    result = provider.run(prompt, capture_output=True, cwd=repo_root)
+    result = provider.run(prompt, cwd=repo_root)
 
     if not result.success:
         return False, "AI review invocation failed."

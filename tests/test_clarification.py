@@ -5,7 +5,7 @@ import os
 import subprocess
 import types
 
-from aiorchestra.ai.claude import InvokeResult, _parse_clarification
+from aiorchestra.ai import InvokeResult, _parse_clarification
 from aiorchestra.pipeline import Pipeline, _DEFERRED
 from aiorchestra.stages.clarification import CLARIFICATION_LABEL
 from aiorchestra.stages.labels import LABEL_WORKING

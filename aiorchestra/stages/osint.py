@@ -14,7 +14,7 @@ import re
 import shutil
 from dataclasses import dataclass, field
 
-from aiorchestra.ai.provider import create_provider
+from aiorchestra.ai import create_provider
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.types import IssueData
 from aiorchestra.templates import render_template

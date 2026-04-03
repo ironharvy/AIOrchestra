@@ -2,7 +2,7 @@
 
 import subprocess
 
-from aiorchestra.ai.provider import GeminiProvider, create_provider
+from aiorchestra.ai import GeminiProvider, create_provider
 
 
 def _make_provider(**overrides):
@@ -19,7 +19,7 @@ def test_gemini_basic_invocation(monkeypatch):
         captured["cwd"] = cwd
         return subprocess.CompletedProcess(cmd, 0, stdout="done\n", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider()
     result = provider.run("fix the bug", cwd="/tmp/repo")
@@ -40,7 +40,7 @@ def test_gemini_yolo_disabled(monkeypatch):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider(yolo=False)
     provider.run("hello")
@@ -56,7 +56,7 @@ def test_gemini_custom_model(monkeypatch):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider(model="gemini-2.5-flash")
     provider.run("hello")
@@ -72,7 +72,7 @@ def test_gemini_failure(monkeypatch):
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="gemini error")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider()
     result = provider.run("hello")
@@ -89,7 +89,7 @@ def test_gemini_clarification(monkeypatch):
             cmd, 0, stdout="NEEDS_CLARIFICATION: What framework?", stderr=""
         )
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider()
     result = provider.run("hello")
@@ -102,12 +102,12 @@ def test_gemini_clarification(monkeypatch):
 def test_gemini_available(monkeypatch):
     """available() checks for gemini on PATH."""
     monkeypatch.setattr(
-        "aiorchestra.ai.provider.shutil.which",
+        "aiorchestra.ai._cli.shutil.which",
         lambda name: "/usr/bin/gemini" if name == "gemini" else None,
     )
     assert _make_provider().available()
 
-    monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: None)
+    monkeypatch.setattr("aiorchestra.ai._cli.shutil.which", lambda name: None)
     assert not _make_provider().available()
 
 

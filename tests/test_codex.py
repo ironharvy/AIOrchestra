@@ -2,7 +2,7 @@
 
 import subprocess
 
-from aiorchestra.ai.provider import CodexProvider, create_provider
+from aiorchestra.ai import CodexProvider, create_provider
 
 
 def _make_provider(**overrides):
@@ -19,7 +19,7 @@ def test_codex_basic_invocation(monkeypatch):
         captured["cwd"] = cwd
         return subprocess.CompletedProcess(cmd, 0, stdout="done\n", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider()
     result = provider.run("fix the bug", cwd="/tmp/repo")
@@ -41,7 +41,7 @@ def test_codex_custom_model(monkeypatch):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider(model="o4-mini")
     provider.run("hello")
@@ -59,7 +59,7 @@ def test_codex_custom_approval_mode(monkeypatch):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider(approval_mode="auto-edit")
     provider.run("hello")
@@ -74,7 +74,7 @@ def test_codex_failure(monkeypatch):
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="codex error")
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider()
     result = provider.run("hello")
@@ -91,7 +91,7 @@ def test_codex_clarification(monkeypatch):
             cmd, 0, stdout="NEEDS_CLARIFICATION: What language?", stderr=""
         )
 
-    monkeypatch.setattr("aiorchestra.ai.provider.subprocess.run", fake_run)
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
 
     provider = _make_provider()
     result = provider.run("hello")
@@ -104,12 +104,12 @@ def test_codex_clarification(monkeypatch):
 def test_codex_available(monkeypatch):
     """available() checks for codex on PATH."""
     monkeypatch.setattr(
-        "aiorchestra.ai.provider.shutil.which",
+        "aiorchestra.ai._cli.shutil.which",
         lambda name: "/usr/bin/codex" if name == "codex" else None,
     )
     assert _make_provider().available()
 
-    monkeypatch.setattr("aiorchestra.ai.provider.shutil.which", lambda name: None)
+    monkeypatch.setattr("aiorchestra.ai._cli.shutil.which", lambda name: None)
     assert not _make_provider().available()
 
 

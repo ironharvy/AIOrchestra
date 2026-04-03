@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import logging
 import os
 
-from aiorchestra.agents import agent_family_from_config, build_agent_branch
+from aiorchestra.ai import agent_family_from_config, build_agent_branch
 from aiorchestra.config import load_config
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.clarification import request_clarification
