@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 DEFAULT_AGENT_FAMILY = "claude"
-KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "jules")
+KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "gemini", "jules")
 
 
 def normalize_agent_family(value: str | None) -> str:
@@ -16,7 +16,7 @@ def normalize_agent_family(value: str | None) -> str:
     if not normalized:
         return DEFAULT_AGENT_FAMILY
 
-    for family in ("claude", "codex"):
+    for family in KNOWN_AGENTS:
         if family in normalized:
             return family
 

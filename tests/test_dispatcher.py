@@ -1,6 +1,6 @@
 """Tests for the multi-repo dispatcher and agent resolution."""
 
-from aiorchestra.agents import resolve_agent
+from aiorchestra.agents import normalize_agent_family, resolve_agent
 from aiorchestra.cli import build_parser
 from aiorchestra.dispatcher import Dispatcher
 
@@ -44,6 +44,35 @@ def test_resolve_agent_substring_match():
 
 def test_resolve_agent_empty_labels():
     assert resolve_agent([]) == "claude"
+
+
+# ---------------------------------------------------------------------------
+# normalize_agent_family
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_agent_family_jules():
+    assert normalize_agent_family("jules") == "jules"
+
+
+def test_normalize_agent_family_gemini():
+    assert normalize_agent_family("gemini") == "gemini"
+
+
+def test_normalize_agent_family_codex():
+    assert normalize_agent_family("codex") == "codex"
+
+
+def test_normalize_agent_family_codex_v2():
+    assert normalize_agent_family("codex-v2") == "codex"
+
+
+def test_normalize_agent_family_claude_code():
+    assert normalize_agent_family("claude-code") == "claude"
+
+
+def test_normalize_agent_family_none():
+    assert normalize_agent_family(None) == "claude"
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +254,13 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     def fake_implement(
-        issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context=""
+        issue,
+        config,
+        prompt_name="implement",
+        error_text=None,
+        repo_root=None,
+        osint_context="",
+        repo=None,
     ):
         from aiorchestra.ai.claude import InvokeResult
 

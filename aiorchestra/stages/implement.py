@@ -52,11 +52,16 @@ def implement(
     error_text: str | None = None,
     repo_root: str | None = None,
     osint_context: str = "",
+    repo: str | None = None,
 ) -> InvokeResult:
     """Invoke the AI to implement changes. Returns an ``InvokeResult``."""
     prompt = _build_prompt(issue, prompt_name, repo_root, error_text, osint_context)
     log.debug("Prompt: %s", prompt)
-    ai_config = config.get("ai", {})
+    ai_config = dict(config.get("ai", {}))
+
+    # Jules needs the GitHub owner/repo to create remote sessions.
+    if repo and "repo" not in ai_config:
+        ai_config["repo"] = repo
 
     provider = create_provider(ai_config)
     log.info("Invoking %s provider...", ai_config.get("provider", "claude-code"))

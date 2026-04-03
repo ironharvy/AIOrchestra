@@ -42,11 +42,18 @@ DEFAULTS = {
                 "name": "cross-model-review",
                 "enabled": False,
                 "provider": "ollama",
+                "strict": False,
                 "ollama": {
                     "endpoint": "http://localhost:11434",
                     "model": "mistral",
                     "timeout": 120,
                 },
+            },
+            {
+                "name": "cross-agent-review",
+                "enabled": False,
+                "provider": "auto",
+                "strict": True,
             },
             {
                 "name": "human-required",

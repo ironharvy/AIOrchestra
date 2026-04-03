@@ -407,6 +407,7 @@ class Pipeline:
             error_text=error_text,
             repo_root=ctx.repo_root,
             osint_context=ctx.osint_context,
+            repo=ctx.repo,
         )
 
         if result.needs_clarification:

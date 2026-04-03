@@ -3,7 +3,7 @@
 Tiers execute in order and short-circuit on failure:
 
   T3  ai-review          — primary AI reviews the diff (default: claude-code)
-  T4  cross-model-review — second AI cross-checks (default: ollama/local)
+  T4  cross-model-review — second AI cross-checks (any provider: codex, claude-code, ollama, …)
   T5  human-required     — gate on human approval (label-gated)
 
 T0 (lint/tests) and T1 (static analysis) run earlier in the validate stage.
@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from aiorchestra.agents import normalize_agent_family
 from aiorchestra.ai.provider import create_provider
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.types import FeedbackResult, IssueData, PipelineConfig
@@ -68,7 +69,45 @@ def _run_ai_review(
     return False, result.output
 
 
-# -- T4: Cross-model review -------------------------------------------------
+# -- T4: Cross-model / cross-agent review -----------------------------------
+
+# When auto-selecting a cross-review agent, pick a *different* agent family
+# from the one that wrote the code.  Order matters: first match wins.
+_CROSS_AGENT_PREFERENCES: dict[str, list[str]] = {
+    "claude": ["codex", "gemini", "jules", "ollama"],
+    "codex": ["claude-code", "gemini", "jules", "ollama"],
+    "gemini": ["claude-code", "codex", "jules", "ollama"],
+    "jules": ["claude-code", "codex", "gemini", "ollama"],
+}
+
+
+def pick_cross_agent(implementation_provider: str) -> str:
+    """Return the preferred cross-review provider for *implementation_provider*.
+
+    If the implementing agent is ``claude-code``, the first choice for review
+    is ``codex`` (and vice versa).  Falls back to ``ollama`` when no
+    dedicated agent is available.
+    """
+    family = normalize_agent_family(implementation_provider)
+    candidates = _CROSS_AGENT_PREFERENCES.get(family, ["ollama"])
+    return candidates[0]
+
+
+def _build_cross_review_provider_cfg(tier_cfg: dict[str, Any]) -> dict:
+    """Build a flat provider config dict from a cross-model tier config.
+
+    Supports both the legacy Ollama-nested format::
+
+        {"provider": "ollama", "ollama": {"endpoint": "...", "model": "..."}}
+
+    and a flat format for any provider::
+
+        {"provider": "codex", "model": "o4-mini", "approval_mode": "suggest"}
+    """
+    provider_name = tier_cfg.get("provider", "ollama")
+    if provider_name == "ollama" and "ollama" in tier_cfg:
+        return {**tier_cfg["ollama"], "provider": "ollama"}
+    return {**tier_cfg, "provider": provider_name}
 
 
 def _run_cross_model_review(
@@ -77,9 +116,15 @@ def _run_cross_model_review(
     issue: IssueData | None,
     repo_root: str | None,
 ) -> FeedbackResult:
-    """Run cross-model review via a different provider (default: Ollama)."""
+    """Run cross-model review via a different provider.
+
+    Supports any registered provider (codex, claude-code, jules, ollama, …).
+    When ``strict`` is true in the tier config, unavailability or invocation
+    failure is a hard error instead of a graceful skip.
+    """
     number = issue["number"] if issue else 0
     title = issue["title"] if issue else "unknown"
+    strict = tier_cfg.get("strict", False)
 
     prompt = render_template(
         "review_cross_model",
@@ -89,17 +134,15 @@ def _run_cross_model_review(
         diff=diff,
     )
 
-    # Build provider config — for Ollama tiers the endpoint/model/timeout
-    # live under a nested "ollama" key in the config.
-    provider_name = tier_cfg.get("provider", "ollama")
-    if provider_name == "ollama":
-        provider_cfg = {**tier_cfg.get("ollama", {}), "provider": "ollama"}
-    else:
-        provider_cfg = {**tier_cfg, "provider": provider_name}
-
+    provider_cfg = _build_cross_review_provider_cfg(tier_cfg)
+    provider_name = provider_cfg.get("provider", "ollama")
     provider = create_provider(provider_cfg)
 
     if not provider.available():
+        if strict:
+            msg = f"Cross-review provider {provider_name!r} is not available"
+            log.error("%s — failing (strict mode)", msg)
+            return False, msg
         log.warning("Provider %s not available — skipping cross-model review (T4)", provider_name)
         return True, None
 
@@ -109,9 +152,13 @@ def _run_cross_model_review(
         "If there are issues, describe them clearly with severity levels."
     )
 
-    result = provider.run(prompt, system=system_prompt)
+    result = provider.run(prompt, system=system_prompt, cwd=repo_root)
 
     if not result.success:
+        if strict:
+            msg = f"Cross-review provider {provider_name!r} invocation failed"
+            log.error("%s — failing (strict mode)", msg)
+            return False, result.output or msg
         log.warning("Cross-model review returned no response — skipping (T4)")
         return True, None
 
@@ -182,6 +229,8 @@ def review(
     if not tiers:
         return _run_ai_review(diff, config, review_cfg, issue, repo_root)
 
+    impl_provider = config.get("ai", {}).get("provider", "claude-code")
+
     for tier_cfg in tiers:
         name = tier_cfg.get("name", "unknown")
         if not tier_cfg.get("enabled", False):
@@ -192,8 +241,9 @@ def review(
 
         if name == "ai-review":
             ok, feedback = _run_ai_review(diff, config, tier_cfg, issue, repo_root)
-        elif name == "cross-model-review":
-            ok, feedback = _run_cross_model_review(diff, tier_cfg, issue, repo_root)
+        elif name in ("cross-model-review", "cross-agent-review"):
+            resolved_cfg = _resolve_cross_review_tier(tier_cfg, impl_provider, repo)
+            ok, feedback = _run_cross_model_review(diff, resolved_cfg, issue, repo_root)
         elif name == "human-required":
             ok, feedback = _check_human_required(tier_cfg, issue)
         else:
@@ -206,3 +256,29 @@ def review(
 
     log.info("All review tiers passed.")
     return True, None
+
+
+def _resolve_cross_review_tier(
+    tier_cfg: dict[str, Any],
+    impl_provider: str,
+    repo: str,
+) -> dict[str, Any]:
+    """Resolve ``"auto"`` provider to a concrete cross-review agent.
+
+    When the tier's ``provider`` is ``"auto"``, :func:`pick_cross_agent`
+    selects a different agent family from the one that implemented the code.
+    The ``repo`` is injected for providers like Jules that need it.
+    """
+    provider = tier_cfg.get("provider", "ollama")
+    if provider == "auto":
+        provider = pick_cross_agent(impl_provider)
+        log.info(
+            "Auto-selected cross-review provider: %s (implementation: %s)",
+            provider,
+            impl_provider,
+        )
+    resolved = {**tier_cfg, "provider": provider}
+    # Jules needs the repo for remote sessions.
+    if normalize_agent_family(provider) == "jules" and "repo" not in resolved:
+        resolved["repo"] = repo
+    return resolved
