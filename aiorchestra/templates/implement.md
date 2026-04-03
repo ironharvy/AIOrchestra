@@ -3,7 +3,7 @@ Implement the following GitHub issue.
 Issue #{number}: {title}
 
 {body}
-{osint_context}
+{osint_context}{comments_section}
 Do NOT run tests — just implement the changes.
 
 ## Clarification protocol

@@ -8,6 +8,70 @@ from aiorchestra.ai import InvokeResult
 from aiorchestra.pipeline import Pipeline
 
 
+def test_issue_comments_passed_to_implement_prompt(monkeypatch, tmp_path):
+    """Comments from issue discovery should appear in the implementation prompt."""
+    captured_prompts = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    def spy_implement(
+        issue,
+        config,
+        prompt_name="implement",
+        error_text=None,
+        repo_root=None,
+        osint_context="",
+        repo=None,
+    ):
+        from aiorchestra.stages.implement import _build_prompt
+
+        prompt = _build_prompt(issue, prompt_name, repo_root, error_text, osint_context)
+        captured_prompts.append(prompt)
+        return InvokeResult(success=True)
+
+    monkeypatch.setattr("aiorchestra.pipeline.implement", spy_implement)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.validate", lambda config, repo_root=None: (True, None)
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: "https://example.test/pr/1",
+    )
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+    )
+
+    issue = {
+        "number": 5,
+        "title": "Fix it",
+        "body": "Details",
+        "comments": [
+            {"author": "alice", "body": "Try approach X instead"},
+        ],
+    }
+    assert pipeline._process_issue(issue) is True
+    assert len(captured_prompts) == 1
+    assert "## Discussion" in captured_prompts[0]
+    assert "@alice" in captured_prompts[0]
+    assert "Try approach X instead" in captured_prompts[0]
+
+
 def test_prepare_issue_reloads_repo_config(monkeypatch, tmp_path):
     calls: dict[str, str | None] = {}
 
@@ -330,6 +394,97 @@ def test_invoke_claude_refuses_without_permissions(monkeypatch, caplog):
     assert result.success is False
     assert not cli_invoked
     assert any("no file-editing permissions" in r.message for r in caplog.records)
+
+
+def test_claim_and_process_adds_awaiting_review_on_success(monkeypatch, tmp_path):
+    """Sequential mode: success should swap agent-working for awaiting-review."""
+    label_calls = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.implement",
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: (
+            InvokeResult(success=True)
+        ),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.validate", lambda config, repo_root=None: (True, None)
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: "https://example.test/pr/1",
+    )
+
+    def fake_add(repo, number, label):
+        label_calls.append(("add", label))
+        return True
+
+    def fake_remove(repo, number, label):
+        label_calls.append(("remove", label))
+        return True
+
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", fake_add)
+    monkeypatch.setattr("aiorchestra.pipeline.remove_label", fake_remove)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.swap_label",
+        lambda repo, n, rm, add: (fake_remove(repo, n, rm), fake_add(repo, n, add)),
+    )
+
+    pipeline = Pipeline(repo="owner/repo", label="claude", config={}, parallel=False)
+    result = pipeline._claim_and_process({"number": 1, "title": "Test"})
+
+    assert result is True
+    assert ("add", "agent-working") in label_calls
+    assert ("remove", "agent-working") in label_calls
+    assert ("add", "awaiting-review") in label_calls
+
+
+def test_claim_and_process_adds_agent_failed_on_failure(monkeypatch, tmp_path):
+    """Sequential mode: failure should swap agent-working for agent-failed."""
+    label_calls = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: None,
+    )
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    def fake_add(repo, number, label):
+        label_calls.append(("add", label))
+        return True
+
+    def fake_remove(repo, number, label):
+        label_calls.append(("remove", label))
+        return True
+
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", fake_add)
+    monkeypatch.setattr("aiorchestra.pipeline.remove_label", fake_remove)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.swap_label",
+        lambda repo, n, rm, add: (fake_remove(repo, n, rm), fake_add(repo, n, add)),
+    )
+
+    pipeline = Pipeline(repo="owner/repo", label="claude", config={}, parallel=False)
+    result = pipeline._claim_and_process({"number": 2, "title": "Fail test"})
+
+    assert result is False
+    assert ("add", "agent-working") in label_calls
+    assert ("remove", "agent-working") in label_calls
+    assert ("add", "agent-failed") in label_calls
+    assert ("add", "awaiting-review") not in label_calls
 
 
 def test_prepare_fails_on_low_disk_space(monkeypatch, tmp_path):

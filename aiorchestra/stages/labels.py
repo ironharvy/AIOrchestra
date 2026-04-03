@@ -17,9 +17,18 @@ log = logging.getLogger(__name__)
 # Labels used as lifecycle state markers.
 LABEL_WORKING = "agent-working"
 LABEL_NEEDS_CLARIFICATION = "needs-clarification"
+LABEL_AWAITING_REVIEW = "awaiting-review"
+LABEL_FAILED = "agent-failed"
 
 # Issues carrying any of these labels are skipped during discovery.
-SKIP_LABELS: frozenset[str] = frozenset({LABEL_WORKING, LABEL_NEEDS_CLARIFICATION})
+SKIP_LABELS: frozenset[str] = frozenset(
+    {
+        LABEL_WORKING,
+        LABEL_NEEDS_CLARIFICATION,
+        LABEL_AWAITING_REVIEW,
+        LABEL_FAILED,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -35,6 +44,8 @@ class LabelDef:
 MANAGED_LABELS: tuple[LabelDef, ...] = (
     LabelDef("agent-working", "fbca04", "AIOrchestra: issue is being processed by an agent"),
     LabelDef("needs-clarification", "d93f0b", "AIOrchestra: waiting for human clarification"),
+    LabelDef("awaiting-review", "1d76db", "AIOrchestra: PR created, awaiting human review"),
+    LabelDef("agent-failed", "e11d48", "AIOrchestra: agent failed, needs human investigation"),
     LabelDef("aiorchestra", "0e8a16", "AIOrchestra: dispatch-eligible issue"),
     LabelDef("claude", "7057ff", "AIOrchestra: process with Claude agent"),
     LabelDef("codex", "1d76db", "AIOrchestra: process with Codex agent"),
@@ -79,6 +90,12 @@ def remove_label(repo: str, issue_number: int, label: str) -> bool:
         return False
     log.debug("Removed label '%s' from #%d", label, issue_number)
     return True
+
+
+def swap_label(repo: str, issue_number: int, remove: str, add: str) -> bool:
+    """Remove one label and add another. Returns True if the add succeeded."""
+    remove_label(repo, issue_number, remove)
+    return add_label(repo, issue_number, add)
 
 
 def _label_exists(repo: str, label_name: str, existing: set[str] | None = None) -> bool:

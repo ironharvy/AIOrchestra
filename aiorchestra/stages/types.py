@@ -30,6 +30,7 @@ class IssueData(_RequiredIssueData, total=False):
     body: str
     labels: list[str]
     assignees: list[str]
+    comments: list[dict[str, str]]
 
 
 PipelineConfig: TypeAlias = dict[str, Any]

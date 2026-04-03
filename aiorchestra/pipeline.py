@@ -14,7 +14,15 @@ from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.osint import enrich_issue
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.implement import implement
-from aiorchestra.stages.labels import LABEL_WORKING, add_label, ensure_labels, remove_label
+from aiorchestra.stages.labels import (
+    LABEL_AWAITING_REVIEW,
+    LABEL_FAILED,
+    LABEL_WORKING,
+    add_label,
+    ensure_labels,
+    remove_label,
+    swap_label,
+)
 from aiorchestra.stages.prepare import prepare_environment
 from aiorchestra.stages.publish import publish
 from aiorchestra.stages.review import review
@@ -163,22 +171,20 @@ class Pipeline:
 
             if result == _DEFERRED:
                 log.info("Issue #%d deferred — waiting for clarification", number)
-                # Clarification label was already applied; remove working label.
                 remove_label(self.repo, number, LABEL_WORKING)
                 os._exit(0)
 
             if not result:
                 log.error("Failed to process issue #%d", number)
-                remove_label(self.repo, number, LABEL_WORKING)
+                swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
                 os._exit(1)
 
-            # Success — issue will be closed by the PR.
-            remove_label(self.repo, number, LABEL_WORKING)
+            swap_label(self.repo, number, LABEL_WORKING, LABEL_AWAITING_REVIEW)
             os._exit(0)
 
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
-            remove_label(self.repo, number, LABEL_WORKING)
+            swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
             os._exit(1)
 
     @staticmethod
@@ -221,7 +227,7 @@ class Pipeline:
             result = self._process_issue(issue)
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
-            remove_label(self.repo, number, LABEL_WORKING)
+            swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
             return False
 
         if result == _DEFERRED:
@@ -229,9 +235,11 @@ class Pipeline:
             remove_label(self.repo, number, LABEL_WORKING)
             return _DEFERRED
 
-        remove_label(self.repo, number, LABEL_WORKING)
         if not result:
             log.error("Failed to process issue #%d", number)
+            swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+        else:
+            swap_label(self.repo, number, LABEL_WORKING, LABEL_AWAITING_REVIEW)
         return result
 
     def _process_issue(self, issue: IssueData) -> bool | str:

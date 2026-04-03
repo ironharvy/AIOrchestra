@@ -4,9 +4,14 @@ import json
 import subprocess
 
 from aiorchestra.stages.labels import (
+    LABEL_AWAITING_REVIEW,
+    LABEL_FAILED,
+    LABEL_WORKING,
     MANAGED_LABELS,
+    SKIP_LABELS,
     LabelDef,
     ensure_labels,
+    swap_label,
 )
 
 
@@ -123,3 +128,39 @@ def test_ensure_labels_defaults_to_managed_labels(monkeypatch):
     created = ensure_labels("owner/repo")
 
     assert len(created) == len(MANAGED_LABELS)
+
+
+# ---------------------------------------------------------------------------
+# Outcome labels
+# ---------------------------------------------------------------------------
+
+
+def test_outcome_labels_in_skip_labels():
+    """Both outcome labels should cause issues to be skipped during discovery."""
+    assert LABEL_AWAITING_REVIEW in SKIP_LABELS
+    assert LABEL_FAILED in SKIP_LABELS
+    assert LABEL_WORKING in SKIP_LABELS
+
+
+def test_outcome_labels_in_managed_labels():
+    """Outcome labels must be auto-created by ensure_labels."""
+    names = {ld.name for ld in MANAGED_LABELS}
+    assert LABEL_AWAITING_REVIEW in names
+    assert LABEL_FAILED in names
+
+
+def test_swap_label(monkeypatch):
+    """swap_label should remove the old label and add the new one."""
+    calls = []
+
+    def fake_run(cmd, logger=None):
+        calls.append(cmd)
+        return _completed_process("")
+
+    monkeypatch.setattr("aiorchestra.stages.labels.run_command", fake_run)
+
+    result = swap_label("owner/repo", 42, LABEL_WORKING, LABEL_AWAITING_REVIEW)
+
+    assert result is True
+    assert any("--remove-label" in c and LABEL_WORKING in c for c in calls)
+    assert any("--add-label" in c and LABEL_AWAITING_REVIEW in c for c in calls)

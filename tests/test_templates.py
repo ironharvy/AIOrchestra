@@ -19,10 +19,25 @@ def test_render_template():
         title="Add feature",
         body="Details here",
         osint_context="",
+        comments_section="",
     )
     assert "42" in result
     assert "Add feature" in result
     assert "Details here" in result
+
+
+def test_render_template_with_comments():
+    result = render_template(
+        "implement",
+        number=7,
+        title="Fix bug",
+        body="Details",
+        osint_context="",
+        comments_section="\n## Discussion\n\n**@alice**:\nTry approach X\n",
+    )
+    assert "## Discussion" in result
+    assert "@alice" in result
+    assert "Try approach X" in result
 
 
 def test_repo_override():

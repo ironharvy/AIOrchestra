@@ -401,7 +401,7 @@ def test_discover_excludes_agent_working_issues(monkeypatch):
 
 def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
     """In sequential mode, _claim_and_process should add agent-working before
-    processing and remove it after, regardless of outcome."""
+    processing and swap it for an outcome label after."""
     label_ops = []
 
     def track_add(repo, number, label):
@@ -412,8 +412,14 @@ def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
         label_ops.append(("remove", number, label))
         return True
 
+    def track_swap(repo, number, remove, add):
+        label_ops.append(("remove", number, remove))
+        label_ops.append(("add", number, add))
+        return True
+
     monkeypatch.setattr("aiorchestra.pipeline.add_label", track_add)
     monkeypatch.setattr("aiorchestra.pipeline.remove_label", track_remove)
+    monkeypatch.setattr("aiorchestra.pipeline.swap_label", track_swap)
     monkeypatch.setattr(
         "aiorchestra.pipeline.prepare_environment",
         lambda repo, branch, workspace: str(tmp_path),
@@ -454,14 +460,14 @@ def test_sequential_mode_adds_and_removes_working_label(monkeypatch, tmp_path):
 
     assert ("add", 7, LABEL_WORKING) in label_ops
     assert ("remove", 7, LABEL_WORKING) in label_ops
-    # add must come before remove
+    assert ("add", 7, "awaiting-review") in label_ops
     add_idx = label_ops.index(("add", 7, LABEL_WORKING))
     remove_idx = label_ops.index(("remove", 7, LABEL_WORKING))
     assert add_idx < remove_idx
 
 
 def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
-    """agent-working label must be removed even when the issue fails."""
+    """agent-working label must be swapped for agent-failed when the issue fails."""
     label_ops = []
 
     monkeypatch.setattr(
@@ -471,6 +477,14 @@ def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "aiorchestra.pipeline.remove_label",
         lambda repo, number, label: label_ops.append(("remove", number, label)) or True,
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.swap_label",
+        lambda repo, number, remove, add: (
+            label_ops.append(("remove", number, remove)),
+            label_ops.append(("add", number, add)),
+            True,
+        )[-1],
     )
     monkeypatch.setattr(
         "aiorchestra.pipeline.prepare_environment",
@@ -502,9 +516,10 @@ def test_sequential_mode_removes_label_on_failure(monkeypatch, tmp_path):
     # Failure return code
     assert pipeline.run(issues=[{"number": 5, "title": "Broken"}]) == 1
 
-    # Label was still cleaned up
+    # agent-working swapped for agent-failed
     assert ("add", 5, LABEL_WORKING) in label_ops
     assert ("remove", 5, LABEL_WORKING) in label_ops
+    assert ("add", 5, "agent-failed") in label_ops
 
 
 # ---------------------------------------------------------------------------
