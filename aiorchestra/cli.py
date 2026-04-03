@@ -11,7 +11,7 @@ from aiorchestra._logging import setup_logging
 from aiorchestra.config import load_config
 from aiorchestra.dispatcher import Dispatcher
 from aiorchestra.pipeline import Pipeline
-from aiorchestra.stages.labels import MANAGED_LABELS, ensure_labels
+from aiorchestra.stages.labels import ensure_labels
 
 log = logging.getLogger(__name__)
 

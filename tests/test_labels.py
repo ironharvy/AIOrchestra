@@ -12,15 +12,11 @@ from aiorchestra.stages.labels import (
 
 def _completed_process(payload="", returncode=0):
     stdout = json.dumps(payload) if not isinstance(payload, str) else payload
-    return subprocess.CompletedProcess(
-        args=["gh"], returncode=returncode, stdout=stdout, stderr=""
-    )
+    return subprocess.CompletedProcess(args=["gh"], returncode=returncode, stdout=stdout, stderr="")
 
 
 def _failed_process(stderr="error"):
-    return subprocess.CompletedProcess(
-        args=["gh"], returncode=1, stdout="", stderr=stderr
-    )
+    return subprocess.CompletedProcess(args=["gh"], returncode=1, stdout="", stderr=stderr)
 
 
 def test_ensure_labels_creates_missing(monkeypatch):
