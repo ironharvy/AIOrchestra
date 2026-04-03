@@ -79,6 +79,9 @@ DEFAULTS = {
             "timeout": 120,
         },
     },
+    "watch": {
+        "poll_interval": 300,
+    },
 }
 
 
