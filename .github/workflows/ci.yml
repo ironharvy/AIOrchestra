@@ -32,9 +32,7 @@ jobs:
       - name: Bandit security scan
         run: bandit -c pyproject.toml -r aiorchestra/
       - name: Semgrep security scan
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: auto
+        run: pip install semgrep && semgrep scan --config auto --error aiorchestra/
 
   test:
     runs-on: ubuntu-latest
