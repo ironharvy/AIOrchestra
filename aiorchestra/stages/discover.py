@@ -11,7 +11,7 @@ from aiorchestra.stages.labels import SKIP_LABELS
 from aiorchestra.stages.types import IssueData
 
 log = logging.getLogger(__name__)
-ISSUE_FIELDS = "number,title,body,labels,assignees"
+ISSUE_FIELDS = "number,title,body,labels,assignees,comments"
 SEARCH_FIELDS = "number,title,body,labels,assignees,repository"
 DISPATCH_LABEL = "aiorchestra"
 
@@ -114,7 +114,22 @@ def _normalize_issue(issue: dict) -> IssueData:
         "labels": _extract_names(issue.get("labels"), key="name"),
         "assignees": _extract_names(issue.get("assignees"), key="login"),
     }
+    comments = issue.get("comments")
+    if comments:
+        normalized["comments"] = _normalize_comments(comments)
     return normalized
+
+
+def _normalize_comments(comments: list[dict]) -> list[dict[str, str]]:
+    """Extract author + body from gh CLI comment objects."""
+    result = []
+    for c in comments:
+        author = c.get("author", {})
+        login = author.get("login", "unknown") if isinstance(author, dict) else str(author)
+        body = c.get("body", "")
+        if body:
+            result.append({"author": login, "body": body})
+    return result
 
 
 def _extract_names(values: list[dict] | None, *, key: str) -> list[str]:
@@ -176,7 +191,10 @@ def discover_all_issues(
         repo = repo_info.get("nameWithOwner", "")
         if not repo:
             continue
-        grouped[repo].append(_normalize_issue(raw))
+        issue = _normalize_issue(raw)
+        if SKIP_LABELS.intersection(issue.get("labels", [])):
+            continue
+        grouped[repo].append(issue)
 
     log.info(
         "Found %d issue(s) across %d repo(s)",

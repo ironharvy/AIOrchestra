@@ -19,7 +19,6 @@ def _build_prompt(
     osint_context: str = "",
 ) -> str:
     """Build a focused prompt for implementation or remediation."""
-    # Format OSINT context as a clearly delimited section when present.
     osint_section = ""
     if osint_context:
         osint_section = (
@@ -29,12 +28,15 @@ def _build_prompt(
             f"{osint_context}\n"
         )
 
+    comments_section = _format_comments(issue.get("comments", []))
+
     template_kwargs = {
         "repo_root": repo_root,
         "number": issue["number"],
         "title": issue["title"],
         "body": issue.get("body", ""),
         "osint_context": osint_section,
+        "comments_section": comments_section,
     }
     if error_text is not None:
         template_kwargs["errors"] = error_text
@@ -43,6 +45,16 @@ def _build_prompt(
         prompt_name,
         **template_kwargs,
     )
+
+
+def _format_comments(comments: list[dict[str, str]]) -> str:
+    """Format issue comments into a prompt section."""
+    if not comments:
+        return ""
+    lines = ["\n## Discussion\n"]
+    for c in comments:
+        lines.append(f"**@{c['author']}**:\n{c['body']}\n")
+    return "\n".join(lines)
 
 
 def implement(

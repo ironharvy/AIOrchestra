@@ -59,6 +59,56 @@ def test_discover_normalizes_issue_metadata(monkeypatch):
     ]
 
 
+def test_discover_skips_awaiting_review(monkeypatch):
+    """Issues with the awaiting-review label should not be returned."""
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 1,
+                    "title": "Already reviewed",
+                    "body": "",
+                    "labels": [{"name": "claude"}, {"name": "awaiting-review"}],
+                    "assignees": [],
+                },
+                {
+                    "number": 2,
+                    "title": "Ready",
+                    "body": "",
+                    "labels": [{"name": "claude"}],
+                    "assignees": [],
+                },
+            ]
+        ),
+    )
+
+    issues = discover_issues("owner/repo", "claude", retries=1, delay=0)
+    assert len(issues) == 1
+    assert issues[0]["number"] == 2
+
+
+def test_discover_skips_agent_failed(monkeypatch):
+    """Issues with the agent-failed label should not be returned."""
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 3,
+                    "title": "Previously failed",
+                    "body": "",
+                    "labels": [{"name": "claude"}, {"name": "agent-failed"}],
+                    "assignees": [],
+                },
+            ]
+        ),
+    )
+
+    issues = discover_issues("owner/repo", "claude", retries=1, delay=0)
+    assert issues == []
+
+
 def test_discover_issue_number_requires_matching_agent_label(monkeypatch):
     monkeypatch.setattr(
         "aiorchestra.stages.discover.run_command",
@@ -168,3 +218,80 @@ def test_discover_all_skips_entries_without_repository(monkeypatch):
     )
 
     assert discover_all_issues() == {}
+
+
+def test_discover_all_skips_issues_with_skip_labels(monkeypatch):
+    """discover_all_issues must filter out issues with outcome/working labels."""
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 1,
+                    "title": "In review",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}, {"name": "awaiting-review"}],
+                    "assignees": [],
+                    "repository": {"nameWithOwner": "owner/repo-a"},
+                },
+                {
+                    "number": 2,
+                    "title": "Ready",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}],
+                    "assignees": [],
+                    "repository": {"nameWithOwner": "owner/repo-a"},
+                },
+                {
+                    "number": 3,
+                    "title": "Failed",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}, {"name": "agent-failed"}],
+                    "assignees": [],
+                    "repository": {"nameWithOwner": "owner/repo-b"},
+                },
+            ]
+        ),
+    )
+
+    result = discover_all_issues(owner="@me")
+    assert set(result.keys()) == {"owner/repo-a"}
+    assert len(result["owner/repo-a"]) == 1
+    assert result["owner/repo-a"][0]["number"] == 2
+
+
+def test_discover_normalizes_comments(monkeypatch):
+    """Issue comments should be extracted and normalized."""
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 10,
+                    "title": "With comments",
+                    "body": "Details",
+                    "labels": [{"name": "claude"}],
+                    "assignees": [],
+                    "comments": [
+                        {
+                            "author": {"login": "alice"},
+                            "body": "Try approach X",
+                            "createdAt": "2025-01-01T00:00:00Z",
+                        },
+                        {
+                            "author": {"login": "bob"},
+                            "body": "I agree",
+                            "createdAt": "2025-01-02T00:00:00Z",
+                        },
+                    ],
+                }
+            ]
+        ),
+    )
+
+    issues = discover_issues("owner/repo", "claude", retries=1, delay=0)
+    assert len(issues) == 1
+    assert "comments" in issues[0]
+    assert len(issues[0]["comments"]) == 2
+    assert issues[0]["comments"][0] == {"author": "alice", "body": "Try approach X"}
+    assert issues[0]["comments"][1] == {"author": "bob", "body": "I agree"}
