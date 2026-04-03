@@ -352,6 +352,16 @@ def test_pick_cross_agent_jules_prefers_claude():
     assert pick_cross_agent("jules") == "claude-code"
 
 
+def test_pick_cross_agent_gemini_prefers_claude():
+    assert pick_cross_agent("gemini") == "claude-code"
+
+
+def test_pick_cross_agent_claude_has_gemini_in_fallback():
+    """Gemini is in the preference list for claude (after codex)."""
+    from aiorchestra.stages.review import _CROSS_AGENT_PREFERENCES
+    assert "gemini" in _CROSS_AGENT_PREFERENCES["claude"]
+
+
 def test_pick_cross_agent_unknown_falls_back_to_ollama():
     assert pick_cross_agent("some-custom-thing") == "ollama"
 

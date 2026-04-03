@@ -187,6 +187,57 @@ class CodexProvider(AIProvider):
 
 
 # ---------------------------------------------------------------------------
+# Google Gemini CLI
+# ---------------------------------------------------------------------------
+
+
+class GeminiProvider(AIProvider):
+    """Invokes the ``gemini`` CLI in headless (``-p``) mode.
+
+    Gemini CLI is Google's local coding agent — the same category as Claude
+    Code and Codex.  The ``-p`` flag runs it non-interactively, returning
+    text output to stdout.  ``--yolo`` auto-approves tool use (equivalent
+    to ``--dangerously-skip-permissions`` for Claude).
+    """
+
+    def run(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        capture_output: bool = False,
+        cwd: str | None = None,
+    ) -> InvokeResult:
+        cmd: list[str] = ["gemini", "-p"]
+
+        if self._config.get("yolo", True):
+            cmd.append("--yolo")
+
+        model = self._config.get("model")
+        if model:
+            cmd.extend(["-m", model])
+
+        cmd.append(prompt)
+
+        log.info("Invoking Gemini CLI...")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+        if result.returncode != 0:
+            log.error("Gemini CLI failed: %s", result.stderr.strip())
+            return InvokeResult(success=False, output=result.stderr)
+
+        return _parse_clarification(result.stdout)
+
+    def available(self) -> bool:
+        return shutil.which("gemini") is not None
+
+
+# ---------------------------------------------------------------------------
 # Google Jules (cloud-based async agent)
 # ---------------------------------------------------------------------------
 
@@ -389,6 +440,7 @@ class OllamaProvider(AIProvider):
 _PROVIDERS: dict[str, type[AIProvider]] = {
     "claude-code": ClaudeCodeProvider,
     "codex": CodexProvider,
+    "gemini": GeminiProvider,
     "jules": JulesProvider,
     "ollama": OllamaProvider,
 }

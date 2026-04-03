@@ -55,6 +55,10 @@ def test_normalize_agent_family_jules():
     assert normalize_agent_family("jules") == "jules"
 
 
+def test_normalize_agent_family_gemini():
+    assert normalize_agent_family("gemini") == "gemini"
+
+
 def test_normalize_agent_family_codex():
     assert normalize_agent_family("codex") == "codex"
 

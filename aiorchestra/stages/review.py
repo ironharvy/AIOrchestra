@@ -74,9 +74,10 @@ def _run_ai_review(
 # When auto-selecting a cross-review agent, pick a *different* agent family
 # from the one that wrote the code.  Order matters: first match wins.
 _CROSS_AGENT_PREFERENCES: dict[str, list[str]] = {
-    "claude": ["codex", "jules", "ollama"],
-    "codex": ["claude-code", "jules", "ollama"],
-    "jules": ["claude-code", "codex", "ollama"],
+    "claude": ["codex", "gemini", "jules", "ollama"],
+    "codex": ["claude-code", "gemini", "jules", "ollama"],
+    "gemini": ["claude-code", "codex", "jules", "ollama"],
+    "jules": ["claude-code", "codex", "gemini", "ollama"],
 }
 
 
