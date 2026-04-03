@@ -85,12 +85,55 @@ DEFAULTS = {
 }
 
 
+def _merge_named_lists(base: list[dict], override: list[dict]) -> list:
+    """Merge two lists of dicts that each have a ``name`` key.
+
+    Items in *override* update matching items in *base* (by name).
+    Override items with no match in *base* are appended.
+    Base items with no match in *override* are kept unchanged.
+    """
+    merged = {item["name"]: dict(item) for item in base}
+    for item in override:
+        name = item["name"]
+        if name in merged:
+            merged[name] = _deep_merge(merged[name], item)
+        else:
+            merged[name] = dict(item)
+    # Preserve original ordering from base, then append new entries.
+    seen = set()
+    result = []
+    for item in base:
+        name = item["name"]
+        if name not in seen:
+            result.append(merged[name])
+            seen.add(name)
+    for item in override:
+        if item["name"] not in seen:
+            result.append(merged[item["name"]])
+            seen.add(item["name"])
+    return result
+
+
+def _is_named_list(value: list) -> bool:
+    """Return True if *value* is a list of dicts that all have a ``name`` key."""
+    return (
+        bool(value) and all(isinstance(v, dict) for v in value) and all("name" in v for v in value)
+    )
+
+
 def _deep_merge(base: dict, override: dict) -> dict:
-    """Merge override into base, recursing into nested dicts."""
+    """Merge override into base, recursing into nested dicts.
+
+    Lists of dicts with a ``name`` key (e.g. review.tiers) are merged
+    by name rather than replaced wholesale.
+    """
     result = base.copy()
     for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
+        existing = result.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(existing, value)
+        elif isinstance(existing, list) and isinstance(value, list) and _is_named_list(existing):
+            result[key] = _merge_named_lists(existing, value)
         else:
             result[key] = value
     return result
