@@ -45,8 +45,8 @@ def test_merge_named_lists_preserves_order():
     result = _merge_named_lists(base, override)
     assert [r["name"] for r in result] == ["a", "b", "c"]
     assert result[0]["v"] == 10  # overridden
-    assert result[1]["v"] == 2   # kept
-    assert result[2]["v"] == 3   # appended
+    assert result[1]["v"] == 2  # kept
+    assert result[2]["v"] == 3  # appended
 
 
 def test_deep_merge_replaces_plain_lists():

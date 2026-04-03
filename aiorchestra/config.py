@@ -117,9 +117,7 @@ def _merge_named_lists(base: list[dict], override: list[dict]) -> list:
 def _is_named_list(value: list) -> bool:
     """Return True if *value* is a list of dicts that all have a ``name`` key."""
     return (
-        bool(value)
-        and all(isinstance(v, dict) for v in value)
-        and all("name" in v for v in value)
+        bool(value) and all(isinstance(v, dict) for v in value) and all("name" in v for v in value)
     )
 
 

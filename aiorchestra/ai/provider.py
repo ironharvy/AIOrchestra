@@ -185,7 +185,7 @@ class OllamaProvider(AIProvider):
 
         log.info("Invoking Ollama model=%s at %s", self._model, self._endpoint)
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
                 data = json.loads(resp.read().decode())
         except urllib.error.URLError as exc:
             log.error("Ollama request failed: %s", exc)
@@ -207,7 +207,7 @@ class OllamaProvider(AIProvider):
         url = f"{self._endpoint}/api/tags"
         req = urllib.request.Request(url, method="GET")
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:  # nosec B310
                 return resp.status == 200
         except Exception:
             return False

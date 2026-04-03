@@ -27,7 +27,11 @@ line-length = 100
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = ["B101"]
+# B101: assert used (fine outside tests)
+# B404: import subprocess (expected — this tool orchestrates shell commands)
+# B602: shell=True (intentional — runs user-configured lint/test commands)
+# B603: subprocess without shell (intentional — runs CLI tools)
+skips = ["B101", "B404", "B602", "B603"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
