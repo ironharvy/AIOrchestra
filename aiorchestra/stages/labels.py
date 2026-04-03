@@ -8,6 +8,7 @@ implementation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
 
 from aiorchestra.stages._shell import run_command
@@ -93,8 +94,9 @@ def remove_label(repo: str, issue_number: int, label: str) -> bool:
 
 
 def swap_label(repo: str, issue_number: int, remove: str, add: str) -> bool:
-    """Remove one label and add another. Returns True if the add succeeded."""
-    remove_label(repo, issue_number, remove)
+    """Remove one label and add another. Returns True only if both operations succeed."""
+    if not remove_label(repo, issue_number, remove):
+        return False
     return add_label(repo, issue_number, add)
 
 
@@ -108,8 +110,6 @@ def _label_exists(repo: str, label_name: str, existing: set[str] | None = None) 
     )
     if result.returncode != 0:
         return False
-    import json
-
     for item in json.loads(result.stdout or "[]"):
         if item.get("name", "").lower() == label_name.lower():
             return True
@@ -124,8 +124,6 @@ def _fetch_existing_labels(repo: str) -> set[str]:
     )
     if result.returncode != 0:
         return set()
-    import json
-
     return {item["name"].lower() for item in json.loads(result.stdout or "[]")}
 
 

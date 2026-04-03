@@ -12,9 +12,10 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from aiorchestra.ai import create_provider
+from aiorchestra.ai import AIProvider, create_provider
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.types import IssueData
 from aiorchestra.templates import render_template
@@ -177,7 +178,7 @@ def collect_curl_headers(target: str) -> CollectorResult:
 
 
 # Registry mapping collector names to functions.
-COLLECTORS: dict[str, callable] = {
+COLLECTORS: dict[str, Callable[[str], CollectorResult]] = {
     "whois": collect_whois,
     "dig": collect_dig,
     "dig-mx": collect_dig_mx,
@@ -256,7 +257,7 @@ def gather(
     return report
 
 
-def _summarise(raw_text: str, provider) -> str:
+def _summarise(raw_text: str, provider: AIProvider) -> str:
     """Distill raw OSINT output into a structured summary via the given provider."""
     prompt = render_template("osint_summarize", raw_osint=raw_text)
     result = provider.run(prompt)
