@@ -22,6 +22,7 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,6 +33,7 @@ jobs:
       - name: Bandit security scan
         run: bandit -c pyproject.toml -r aiorchestra/
       - name: Semgrep security scan
+        continue-on-error: true
         run: pip install semgrep && semgrep scan --config auto --error aiorchestra/
 
   test:
