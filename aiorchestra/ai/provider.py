@@ -454,8 +454,6 @@ class OpenCodeProvider(AIProvider):
         self,
         prompt: str,
         *,
-        system: str | None = None,
-        capture_output: bool = False,
         cwd: str | None = None,
     ) -> InvokeResult:
         cmd: list[str] = ["opencode", "run"]
@@ -467,7 +465,7 @@ class OpenCodeProvider(AIProvider):
         if model:
             cmd.extend(["--model", model])
 
-        cmd.append(prompt)
+        cmd.extend(["--", prompt])
 
         log.info("Invoking OpenCode CLI...")
         result = subprocess.run(
