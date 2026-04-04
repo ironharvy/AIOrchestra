@@ -11,4 +11,3 @@ def _mock_ensure_labels(monkeypatch):
         return []
 
     monkeypatch.setattr("aiorchestra.stages.labels.ensure_labels", noop)
-    monkeypatch.setattr("aiorchestra.pipeline.ensure_labels", noop)

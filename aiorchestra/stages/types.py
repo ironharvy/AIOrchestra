@@ -61,6 +61,10 @@ class RemoteCheckFn(Protocol):
     def __call__(self, pr_url: str) -> FeedbackResult: ...
 
 
+class PostPublishFn(Protocol):
+    def __call__(self, pr_url: str) -> PublishResult: ...
+
+
 class PublishFn(Protocol):
     def __call__(
         self,

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 import logging
 import os
-import time
 
 from aiorchestra.ai import agent_family_from_config, build_agent_branch
 from aiorchestra.config import load_config
@@ -16,19 +14,11 @@ from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.osint import enrich_issue
 from aiorchestra.stages.ci import wait_for_ci
 from aiorchestra.stages.implement import implement
-from aiorchestra.stages.labels import (
-    LABEL_AWAITING_REVIEW,
-    LABEL_FAILED,
-    LABEL_WORKING,
-    add_label,
-    ensure_labels,
-    remove_label,
-    swap_label,
-)
+from aiorchestra.stages.labels import LABEL_WORKING, add_label, remove_label
 from aiorchestra.stages.prepare import prepare_environment
 from aiorchestra.stages.publish import publish
 from aiorchestra.stages.review import review
-from aiorchestra.stages.types import IssueData, PipelineConfig, RemoteCheckFn
+from aiorchestra.stages.types import IssueData, PipelineConfig, PostPublishFn, RemoteCheckFn
 from aiorchestra.stages.validate import validate
 
 log = logging.getLogger(__name__)
@@ -37,29 +27,10 @@ log = logging.getLogger(__name__)
 _DEFERRED = "deferred"
 
 
-def _fmt_duration(seconds: float) -> str:
-    """Format a duration in seconds for human-readable log output."""
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    mins = int(seconds) // 60
-    secs = int(seconds) % 60
-    return f"{mins}m{secs:02d}s"
-
-
 def _has_changes(repo_root: str) -> bool:
     """Return True if the worktree has any uncommitted or staged changes."""
     result = run_command(
         ["git", "status", "--porcelain"],
-        cwd=repo_root,
-        logger=log,
-    )
-    return bool(result.stdout.strip())
-
-
-def _branch_has_existing_work(repo_root: str) -> bool:
-    """Return True if the current branch has commits ahead of origin/main."""
-    result = run_command(
-        ["git", "diff", "--stat", "origin/main...HEAD"],
         cwd=repo_root,
         logger=log,
     )
@@ -107,8 +78,6 @@ class Pipeline:
 
     def run(self, issues: list[IssueData] | None = None) -> int:
         """Run the full pipeline. Returns 0 on success, 1 on failure."""
-        ensure_labels(self.repo, dry_run=self.dry_run)
-
         if issues is None:
             issues = discover_issues(
                 self.repo,
@@ -192,20 +161,22 @@ class Pipeline:
 
             if result == _DEFERRED:
                 log.info("Issue #%d deferred — waiting for clarification", number)
+                # Clarification label was already applied; remove working label.
                 remove_label(self.repo, number, LABEL_WORKING)
                 os._exit(0)
 
             if not result:
                 log.error("Failed to process issue #%d", number)
-                swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+                remove_label(self.repo, number, LABEL_WORKING)
                 os._exit(1)
 
-            swap_label(self.repo, number, LABEL_WORKING, LABEL_AWAITING_REVIEW)
+            # Success — issue will be closed by the PR.
+            remove_label(self.repo, number, LABEL_WORKING)
             os._exit(0)
 
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
-            swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+            remove_label(self.repo, number, LABEL_WORKING)
             os._exit(1)
 
     @staticmethod
@@ -248,7 +219,7 @@ class Pipeline:
             result = self._process_issue(issue)
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
-            swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+            remove_label(self.repo, number, LABEL_WORKING)
             return False
 
         if result == _DEFERRED:
@@ -256,74 +227,41 @@ class Pipeline:
             remove_label(self.repo, number, LABEL_WORKING)
             return _DEFERRED
 
+        remove_label(self.repo, number, LABEL_WORKING)
         if not result:
             log.error("Failed to process issue #%d", number)
-            swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
-        else:
-            swap_label(self.repo, number, LABEL_WORKING, LABEL_AWAITING_REVIEW)
         return result
 
     def _process_issue(self, issue: IssueData) -> bool | str:
         """Process a single issue. Returns True on success, False on failure,
         or ``_DEFERRED`` when the issue needs human clarification."""
-        issue_start = time.monotonic()
-
-        t0 = time.monotonic()
         ctx = self._prepare_issue(issue)
-        prepare_elapsed = time.monotonic() - t0
-        log.info("[prepare] completed in %s", _fmt_duration(prepare_elapsed))
         if ctx is None:
             return False
 
-        if _branch_has_existing_work(ctx.repo_root):
-            log.info("Branch has existing work — using rework mode")
-            initial_prompt = "rework"
-        else:
-            initial_prompt = "implement"
-
-        t0 = time.monotonic()
-        loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
-        impl_elapsed = time.monotonic() - t0
+        loop_result = self._run_validation_loop(ctx)
         if loop_result == _DEFERRED:
             return _DEFERRED
         if not loop_result:
             return False
 
-        t0 = time.monotonic()
         pr_url = publish(
             ctx.repo,
             ctx.branch,
             ctx.issue,
             repo_root=ctx.repo_root,
         )
-        publish_elapsed = time.monotonic() - t0
-        log.info("[publish] completed in %s", _fmt_duration(publish_elapsed))
         if not pr_url:
             return False
 
-        t0 = time.monotonic()
         pr_url = self._run_ci_fix_loop(ctx, pr_url)
-        ci_elapsed = time.monotonic() - t0
         if not pr_url:
             return False
 
-        t0 = time.monotonic()
         pr_url = self._run_review_fix_loop(ctx, pr_url)
-        review_elapsed = time.monotonic() - t0
         if not pr_url:
             return False
 
-        total_elapsed = time.monotonic() - issue_start
-        log.info(
-            "Issue #%d total: %s (prepare: %s, impl+validate: %s, publish: %s, ci: %s, review: %s)",
-            issue["number"],
-            _fmt_duration(total_elapsed),
-            _fmt_duration(prepare_elapsed),
-            _fmt_duration(impl_elapsed),
-            _fmt_duration(publish_elapsed),
-            _fmt_duration(ci_elapsed),
-            _fmt_duration(review_elapsed),
-        )
         log.info("Issue #%d completed successfully.", issue["number"])
         return True
 
@@ -336,20 +274,6 @@ class Pipeline:
         log.info("Working in %s", repo_root)
         config = load_config(self.config_path, repo_root=repo_root)
 
-        # Log resolved config at startup.
-        ai_cfg = config.get("ai", {})
-        review_cfg = config.get("review", {})
-        ci_cfg = config.get("ci", {})
-        enabled_tiers = [
-            t.get("name", "?") for t in review_cfg.get("tiers", []) if t.get("enabled", False)
-        ]
-        log.info(
-            "Config: provider=%s model=%s review=%s ci_timeout=%ss",
-            ai_cfg.get("provider", "claude-code"),
-            ai_cfg.get("model", "default"),
-            enabled_tiers or "(legacy)",
-            ci_cfg.get("timeout", 600),
-        )
         # OSINT enrichment — runs locally, zero cloud tokens.
         osint_config = config.get("osint", {})
         osint_context = enrich_issue(issue, osint_config)
@@ -379,16 +303,10 @@ class Pipeline:
         for attempt in range(1, ctx.max_retries + 1):
             log.info("%s attempt %d/%d", attempt_label, attempt, ctx.max_retries)
 
-            t0 = time.monotonic()
             impl_result = self._implement(
                 ctx,
                 prompt_name=current_prompt,
                 error_text=validation_errors,
-            )
-            log.info(
-                "[implement] attempt %d completed in %s",
-                attempt,
-                _fmt_duration(time.monotonic() - t0),
             )
             if impl_result == _DEFERRED:
                 return _DEFERRED
@@ -426,6 +344,14 @@ class Pipeline:
         if not ctx.config.get("review", {}).get("enabled", True):
             return pr_url
 
+        ci_enabled = ctx.config.get("ci", {}).get("enabled", True)
+
+        def _post_publish_ci_gate(current_pr_url: str) -> str | None:
+            if not ci_enabled:
+                return current_pr_url
+            log.info("[review] Running post-publish CI verification")
+            return self._run_ci_fix_loop(ctx, current_pr_url)
+
         return self._run_remote_fix_loop(
             ctx,
             pr_url,
@@ -438,6 +364,7 @@ class Pipeline:
                 issue=ctx.issue,
                 repo_root=ctx.repo_root,
             ),
+            post_publish_fn=_post_publish_ci_gate,
         )
 
     def _run_remote_fix_loop(
@@ -447,6 +374,7 @@ class Pipeline:
         stage_name: str,
         prompt_name: str,
         check_fn: RemoteCheckFn,
+        post_publish_fn: PostPublishFn | None = None,
     ) -> str | None:
         for attempt in range(1, ctx.max_retries + 1):
             ok, feedback = check_fn(pr_url)
@@ -454,9 +382,6 @@ class Pipeline:
                 return pr_url
 
             log.info("%s failed, attempt %d/%d", stage_name, attempt, ctx.max_retries)
-            if feedback:
-                log.info("%s feedback (first 500 chars): %.500s", stage_name, feedback)
-                log.debug("%s full feedback: %s", stage_name, feedback)
             if not self._run_validation_loop(
                 ctx,
                 prompt_name=prompt_name,
@@ -475,6 +400,11 @@ class Pipeline:
             if not pr_url:
                 return None
 
+            if post_publish_fn is not None:
+                pr_url = post_publish_fn(pr_url)
+                if not pr_url:
+                    return None
+
         log.error("%s failed after %d attempts", stage_name, ctx.max_retries)
         return None
 
@@ -492,7 +422,6 @@ class Pipeline:
             error_text=error_text,
             repo_root=ctx.repo_root,
             osint_context=ctx.osint_context,
-            repo=ctx.repo,
         )
 
         if result.needs_clarification:
