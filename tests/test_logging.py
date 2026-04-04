@@ -62,7 +62,8 @@ def test_use_json_env_text(monkeypatch):
     assert _use_json(sys.stderr) is False
 
 
-def test_use_json_non_tty():
+def test_use_json_non_tty(monkeypatch):
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
     stream = StringIO()  # StringIO has no isatty
     assert _use_json(stream) is True
 
