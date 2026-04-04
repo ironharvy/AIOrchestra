@@ -270,7 +270,8 @@ class Pipeline:
 
         t0 = time.monotonic()
         ctx = self._prepare_issue(issue)
-        log.info("[prepare] completed in %s", _fmt_duration(time.monotonic() - t0))
+        prepare_elapsed = time.monotonic() - t0
+        log.info("[prepare] completed in %s", _fmt_duration(prepare_elapsed))
         if ctx is None:
             return False
 
@@ -295,7 +296,8 @@ class Pipeline:
             ctx.issue,
             repo_root=ctx.repo_root,
         )
-        log.info("[publish] completed in %s", _fmt_duration(time.monotonic() - t0))
+        publish_elapsed = time.monotonic() - t0
+        log.info("[publish] completed in %s", _fmt_duration(publish_elapsed))
         if not pr_url:
             return False
 
@@ -313,10 +315,12 @@ class Pipeline:
 
         total_elapsed = time.monotonic() - issue_start
         log.info(
-            "Issue #%d total: %s (impl+validate: %s, ci: %s, review: %s)",
+            "Issue #%d total: %s (prepare: %s, impl+validate: %s, publish: %s, ci: %s, review: %s)",
             issue["number"],
             _fmt_duration(total_elapsed),
+            _fmt_duration(prepare_elapsed),
             _fmt_duration(impl_elapsed),
+            _fmt_duration(publish_elapsed),
             _fmt_duration(ci_elapsed),
             _fmt_duration(review_elapsed),
         )
@@ -336,7 +340,7 @@ class Pipeline:
         ai_cfg = config.get("ai", {})
         review_cfg = config.get("review", {})
         ci_cfg = config.get("ci", {})
-        enabled_tiers = [t["name"] for t in review_cfg.get("tiers", []) if t.get("enabled", False)]
+        enabled_tiers = [t.get("name", "?") for t in review_cfg.get("tiers", []) if t.get("enabled", False)]
         log.info(
             "Config: provider=%s model=%s review=%s ci_timeout=%ss",
             ai_cfg.get("provider", "claude-code"),
@@ -344,8 +348,6 @@ class Pipeline:
             enabled_tiers or "(legacy)",
             ci_cfg.get("timeout", 600),
         )
-
-
         # OSINT enrichment — runs locally, zero cloud tokens.
         osint_config = config.get("osint", {})
         osint_context = enrich_issue(issue, osint_config)
