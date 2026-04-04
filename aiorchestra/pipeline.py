@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
+
 import logging
 import os
 import time
@@ -313,7 +313,7 @@ class Pipeline:
 
         total_elapsed = time.monotonic() - issue_start
         log.info(
-            "Issue #%d total: %s (implement: %s, ci: %s, review: %s)",
+            "Issue #%d total: %s (impl+validate: %s, ci: %s, review: %s)",
             issue["number"],
             _fmt_duration(total_elapsed),
             _fmt_duration(impl_elapsed),
@@ -344,7 +344,7 @@ class Pipeline:
             enabled_tiers or "(legacy)",
             ci_cfg.get("timeout", 600),
         )
-        log.debug("Full config: %s", json.dumps(config, default=str))
+
 
         # OSINT enrichment — runs locally, zero cloud tokens.
         osint_config = config.get("osint", {})
