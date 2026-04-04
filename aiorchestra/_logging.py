@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import sys
-import time
+from datetime import datetime, timezone
 
 _RESET = "\033[0m"
 
@@ -55,7 +55,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict = {
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(record.created)),
+            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
@@ -112,16 +112,20 @@ def setup_logging(verbosity: int = 0, *, verbose: bool = False) -> None:
         stderr_handler.setFormatter(HumanFormatter(fmt, datefmt=datefmt))
 
     root = logging.getLogger()
+    root.handlers.clear()
     root.setLevel(level)
     root.addHandler(stderr_handler)
 
     # Optional file handler — always JSON
     log_file = os.environ.get("LOG_FILE", "")
     if log_file:
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setLevel(level)
-        file_handler.setFormatter(JSONFormatter())
-        root.addHandler(file_handler)
+        try:
+            file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            file_handler.setLevel(level)
+            file_handler.setFormatter(JSONFormatter())
+            root.addHandler(file_handler)
+        except OSError:
+            logging.warning("Could not open log file %s, file logging disabled", log_file)
 
     # Suppress noisy third-party loggers unless firehose (-vvv)
     if verbosity < 3:

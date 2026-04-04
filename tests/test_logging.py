@@ -228,6 +228,46 @@ def test_setup_logging_file_handler(monkeypatch, tmp_path):
     assert entry["msg"] == "file test message"
 
 
+def test_setup_logging_clears_existing_handlers(monkeypatch):
+    """Calling setup_logging() twice should not duplicate handlers."""
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    monkeypatch.delenv("LOG_FILE", raising=False)
+    root = _fresh_root()
+    setup_logging(verbosity=1)
+    first_count = len(root.handlers)
+    setup_logging(verbosity=1)
+    assert len(root.handlers) == first_count
+    root.handlers.clear()
+
+
+def test_setup_logging_invalid_log_file(monkeypatch):
+    """An invalid LOG_FILE path should not raise an exception."""
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    monkeypatch.setenv("LOG_FILE", "/nonexistent/dir/impossible.log")
+    root = _fresh_root()
+    setup_logging(verbosity=1)  # should not raise
+    # Only the stderr handler should be present (file handler failed gracefully)
+    assert len(root.handlers) == 1
+    root.handlers.clear()
+
+
+def test_json_formatter_subsecond_precision():
+    """JSONFormatter timestamps should include sub-second precision."""
+    fmt = JSONFormatter()
+    record = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="precision test",
+        args=(),
+        exc_info=None,
+    )
+    out = json.loads(fmt.format(record))
+    # ISO 8601 with sub-second precision contains a dot
+    assert "." in out["ts"]
+
+
 # ---------------------------------------------------------------------------
 # CLI integration
 # ---------------------------------------------------------------------------
