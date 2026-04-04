@@ -589,6 +589,155 @@ def test_implement_mode_used_when_branch_has_no_existing_work(monkeypatch, tmp_p
     assert calls == [("implement", "implement")]
 
 
+def test_review_fix_triggers_ci_recheck(monkeypatch, tmp_path):
+    """After a review-fix publish, CI must be re-checked and failures remediated."""
+    calls: list[tuple] = []
+    # Initial validation passes, then review-fix validation passes,
+    # then CI-fix validation passes.
+    validate_results = iter([(True, None), (True, None), (True, None)])
+    # First CI check (after initial publish) passes.
+    # Second CI check (after review-fix publish) fails, then passes after fix.
+    ci_results = iter([(True, None), (False, "lint error"), (True, None)])
+    # Review fails once, then passes.
+    review_results = iter([(False, "needs refactor"), (True, None)])
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 3},
+            "ci": {"enabled": True},
+            "review": {"enabled": True},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    def fake_implement(
+        issue,
+        config,
+        prompt_name="implement",
+        error_text=None,
+        repo_root=None,
+        osint_context="",
+        repo=None,
+    ):
+        calls.append(("implement", prompt_name, error_text))
+        return InvokeResult(success=True)
+
+    def fake_validate(config, repo_root=None):
+        calls.append(("validate",))
+        return next(validate_results)
+
+    def fake_publish(repo, branch, issue, repo_root, pr_url=None):
+        calls.append(("publish",))
+        return pr_url or "https://example.test/pr/1"
+
+    def fake_wait_for_ci(pr_url, config):
+        calls.append(("wait_for_ci",))
+        return next(ci_results)
+
+    def fake_review(repo, branch, config, issue=None, repo_root=None):
+        calls.append(("review",))
+        return next(review_results)
+
+    monkeypatch.setattr("aiorchestra.pipeline.implement", fake_implement)
+    monkeypatch.setattr("aiorchestra.pipeline.validate", fake_validate)
+    monkeypatch.setattr("aiorchestra.pipeline.publish", fake_publish)
+    monkeypatch.setattr("aiorchestra.pipeline.wait_for_ci", fake_wait_for_ci)
+    monkeypatch.setattr("aiorchestra.pipeline.review", fake_review)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+    )
+
+    assert pipeline._process_issue({"number": 38, "title": "Review CI recheck"}) is True
+
+    assert calls == [
+        # Initial implementation + validation + publish
+        ("implement", "implement", None),
+        ("validate",),
+        ("publish",),
+        # Initial CI check passes
+        ("wait_for_ci",),
+        # Review fails → fix → validate → publish
+        ("review",),
+        ("implement", "fix_review", "needs refactor"),
+        ("validate",),
+        ("publish",),
+        # Post-publish CI gate: CI fails → fix → validate → publish → CI passes
+        ("wait_for_ci",),
+        ("implement", "fix_ci", "lint error"),
+        ("validate",),
+        ("publish",),
+        ("wait_for_ci",),
+        # Review passes
+        ("review",),
+    ]
+
+
+def test_review_fix_ci_failure_fails_issue(monkeypatch, tmp_path):
+    """If CI fails after review-fix and cannot be remediated, the issue fails."""
+    validate_results = iter([(True, None), (True, None), (True, None), (True, None), (True, None)])
+    # Initial CI passes, post-review-fix CI always fails.
+    ci_results = iter(
+        [(True, None), (False, "ci broke"), (False, "ci broke"), (False, "ci broke")]
+    )
+    review_results = iter([(False, "fix needed")])
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 3},
+            "ci": {"enabled": True},
+            "review": {"enabled": True},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.implement",
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: InvokeResult(
+            success=True
+        ),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.validate",
+        lambda config, repo_root=None: next(validate_results),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: pr_url
+        or "https://example.test/pr/1",
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.wait_for_ci",
+        lambda pr_url, config: next(ci_results),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.review",
+        lambda repo, branch, config, issue=None, repo_root=None: next(review_results),
+    )
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+    )
+
+    # Should fail because CI can't be fixed after the review-fix publish
+    assert pipeline._process_issue({"number": 39, "title": "CI unfixable"}) is False
+
+
 def test_prepare_fails_on_low_disk_space(monkeypatch, tmp_path):
     """Preparation must refuse to proceed when disk space is too low."""
     from aiorchestra.stages import prepare as prep_mod

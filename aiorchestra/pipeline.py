@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import logging
+import typing
 import os
 import time
 
@@ -426,6 +427,14 @@ class Pipeline:
         if not ctx.config.get("review", {}).get("enabled", True):
             return pr_url
 
+        ci_enabled = ctx.config.get("ci", {}).get("enabled", True)
+
+        def post_publish_ci_gate(current_pr_url: str) -> str | None:
+            if not ci_enabled:
+                return current_pr_url
+            log.info("[review] Running post-publish CI verification")
+            return self._run_ci_fix_loop(ctx, current_pr_url)
+
         return self._run_remote_fix_loop(
             ctx,
             pr_url,
@@ -438,6 +447,7 @@ class Pipeline:
                 issue=ctx.issue,
                 repo_root=ctx.repo_root,
             ),
+            post_publish_fn=post_publish_ci_gate,
         )
 
     def _run_remote_fix_loop(
@@ -447,6 +457,7 @@ class Pipeline:
         stage_name: str,
         prompt_name: str,
         check_fn: RemoteCheckFn,
+        post_publish_fn: typing.Callable[[str], str | None] | None = None,
     ) -> str | None:
         for attempt in range(1, ctx.max_retries + 1):
             ok, feedback = check_fn(pr_url)
@@ -474,6 +485,11 @@ class Pipeline:
             )
             if not pr_url:
                 return None
+
+            if post_publish_fn is not None:
+                pr_url = post_publish_fn(pr_url)
+                if not pr_url:
+                    return None
 
         log.error("%s failed after %d attempts", stage_name, ctx.max_retries)
         return None
