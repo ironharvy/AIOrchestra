@@ -685,9 +685,7 @@ def test_review_fix_ci_failure_fails_issue(monkeypatch, tmp_path):
     """If CI fails after review-fix and cannot be remediated, the issue fails."""
     validate_results = iter([(True, None), (True, None), (True, None), (True, None), (True, None)])
     # Initial CI passes, post-review-fix CI always fails.
-    ci_results = iter(
-        [(True, None), (False, "ci broke"), (False, "ci broke"), (False, "ci broke")]
-    )
+    ci_results = iter([(True, None), (False, "ci broke"), (False, "ci broke"), (False, "ci broke")])
     review_results = iter([(False, "fix needed")])
 
     monkeypatch.setattr(
@@ -706,8 +704,8 @@ def test_review_fix_ci_failure_fails_issue(monkeypatch, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: InvokeResult(
-            success=True
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: (
+            InvokeResult(success=True)
         ),
     )
     monkeypatch.setattr(
@@ -716,8 +714,7 @@ def test_review_fix_ci_failure_fails_issue(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "aiorchestra.pipeline.publish",
-        lambda repo, branch, issue, repo_root, pr_url=None: pr_url
-        or "https://example.test/pr/1",
+        lambda repo, branch, issue, repo_root, pr_url=None: pr_url or "https://example.test/pr/1",
     )
     monkeypatch.setattr(
         "aiorchestra.pipeline.wait_for_ci",
