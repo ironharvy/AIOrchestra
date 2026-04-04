@@ -56,6 +56,10 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
         log.warning("CI failed:\n%s", summary)
 
         log_output = _fetch_failure_logs(pr_url)
+        if log_output:
+            preview = "\n".join(log_output.splitlines()[:20])
+            log.info("CI failure output (first 20 lines):\n%s", preview)
+            log.debug("CI failure full output:\n%s", log_output)
         return False, f"CI failures:\n{summary}\n\n{log_output}"
 
     log.error("CI timed out after %ds", timeout)

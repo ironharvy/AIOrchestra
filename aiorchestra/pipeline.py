@@ -398,6 +398,9 @@ class Pipeline:
                 return pr_url
 
             log.info("%s failed, attempt %d/%d", stage_name, attempt, ctx.max_retries)
+            if feedback:
+                log.info("%s feedback (first 500 chars): %.500s", stage_name, feedback)
+                log.debug("%s full feedback: %s", stage_name, feedback)
             if not self._run_validation_loop(
                 ctx,
                 prompt_name=prompt_name,

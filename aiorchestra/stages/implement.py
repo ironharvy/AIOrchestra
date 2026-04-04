@@ -76,5 +76,10 @@ def implement(
         ai_config["repo"] = repo
 
     provider = create_provider(ai_config)
-    log.info("Invoking %s provider...", ai_config.get("provider", "claude-code"))
+    log.info(
+        "Invoking %s provider (model=%s) for %s",
+        ai_config.get("provider", "claude-code"),
+        ai_config.get("model", "default"),
+        prompt_name,
+    )
     return provider.run(prompt, cwd=repo_root)

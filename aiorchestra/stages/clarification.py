@@ -42,8 +42,9 @@ def request_clarification(
 
     if comment_ok and label_ok:
         log.info(
-            "Issue #%d deferred — clarification requested",
+            "Issue #%d deferred — clarification requested: %s",
             number,
+            message,
         )
     return comment_ok and label_ok
 

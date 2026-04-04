@@ -64,7 +64,8 @@ def _run_ai_review(
         log.info("AI review (T3) passed.")
         return True, None
 
-    log.info("AI review (T3) flagged issues.")
+    log.info("AI review (T3) flagged issues: %.500s", result.output)
+    log.debug("AI review (T3) full feedback: %s", result.output)
     return False, result.output
 
 
@@ -135,6 +136,8 @@ def _run_cross_model_review(
 
     provider_cfg = _build_cross_review_provider_cfg(tier_cfg)
     provider_name = provider_cfg.get("provider", "ollama")
+    model = provider_cfg.get("model", "default")
+    log.info("Cross-model review (T4) using provider=%s model=%s", provider_name, model)
     provider = create_provider(provider_cfg)
 
     if not provider.available():
@@ -165,7 +168,8 @@ def _run_cross_model_review(
         log.info("Cross-model review (T4) passed.")
         return True, None
 
-    log.info("Cross-model review (T4) flagged issues.")
+    log.info("Cross-model review (T4) flagged issues: %.500s", result.output)
+    log.debug("Cross-model review (T4) full feedback: %s", result.output)
     return False, result.output
 
 
