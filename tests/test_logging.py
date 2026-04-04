@@ -1,9 +1,12 @@
-"""Tests for multi-level verbose logging."""
+"""Tests for multi-level verbose logging and observability log messages."""
+
+from __future__ import annotations
 
 import json
 import logging
 import os
 import sys
+import types
 from io import StringIO
 from unittest import mock
 
@@ -14,6 +17,8 @@ from aiorchestra._logging import (
     _use_json,
     setup_logging,
 )
+from aiorchestra.ai import InvokeResult
+from aiorchestra.stages import review as rev_mod
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +295,316 @@ def test_cli_verbose_count():
 
     args = parser.parse_args(["run", "--repo", "owner/repo", "-vvv"])
     assert args.verbose == 3
+
+
+# ===========================================================================
+# Observability — verifying key log messages are emitted
+# ===========================================================================
+
+ISSUE = {"number": 42, "title": "Add feature X"}
+DIFF = "+def foo():\n+    return 42\n"
+LONG_FEEDBACK = "Issue: " + ("x" * 600)
+
+
+class FakeProvider:
+    def __init__(self, output="LGTM", success=True, is_available=True):
+        self._output = output
+        self._success = success
+        self._is_available = is_available
+
+    def run(self, prompt, *, system=None, cwd=None):
+        return InvokeResult(success=self._success, output=self._output)
+
+    def available(self):
+        return self._is_available
+
+
+def _patch_review_provider(monkeypatch, output="LGTM", success=True, is_available=True):
+    provider = FakeProvider(output=output, success=success, is_available=is_available)
+    monkeypatch.setattr(rev_mod, "create_provider", lambda cfg: provider)
+    monkeypatch.setattr(rev_mod, "render_template", lambda name, **kw: "prompt")
+    return provider
+
+
+# ---------------------------------------------------------------------------
+# review.py — T3 review feedback logging
+# ---------------------------------------------------------------------------
+
+
+def test_ai_review_logs_feedback_at_info_truncated(monkeypatch, caplog):
+    _patch_review_provider(monkeypatch, output=LONG_FEEDBACK)
+
+    with caplog.at_level(logging.INFO, logger="aiorchestra.stages.review"):
+        from aiorchestra.stages.review import _run_ai_review
+
+        ok, feedback = _run_ai_review(DIFF, {}, {}, ISSUE, None)
+
+    assert not ok
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("flagged issues" in m for m in info_msgs)
+    # At INFO level the message should be truncated (<=500 chars of the feedback)
+    matching = [m for m in info_msgs if "flagged issues" in m]
+    assert matching
+    assert len(matching[0]) < len(LONG_FEEDBACK) + 100  # truncation applied
+
+
+def test_ai_review_logs_full_feedback_at_debug(monkeypatch, caplog):
+    _patch_review_provider(monkeypatch, output=LONG_FEEDBACK)
+
+    with caplog.at_level(logging.DEBUG, logger="aiorchestra.stages.review"):
+        from aiorchestra.stages.review import _run_ai_review
+
+        _run_ai_review(DIFF, {}, {}, ISSUE, None)
+
+    debug_msgs = [r.message for r in caplog.records if r.levelname == "DEBUG"]
+    assert any("full feedback" in m for m in debug_msgs)
+    full_msg = next(m for m in debug_msgs if "full feedback" in m)
+    assert LONG_FEEDBACK in full_msg
+
+
+# ---------------------------------------------------------------------------
+# review.py — T4 cross-model feedback logging
+# ---------------------------------------------------------------------------
+
+
+def test_cross_model_review_logs_provider_and_model(monkeypatch, caplog):
+    _patch_review_provider(monkeypatch, output="LGTM")
+    tier_cfg = {"provider": "ollama", "ollama": {"model": "phi3", "endpoint": "http://h:1234"}}
+
+    with caplog.at_level(logging.INFO, logger="aiorchestra.stages.review"):
+        from aiorchestra.stages.review import _run_cross_model_review
+
+        _run_cross_model_review(DIFF, tier_cfg, ISSUE, None)
+
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("ollama" in m for m in info_msgs)
+
+
+def test_cross_model_review_logs_feedback_when_flagged(monkeypatch, caplog):
+    _patch_review_provider(monkeypatch, output=LONG_FEEDBACK)
+    tier_cfg = {"provider": "ollama", "ollama": {}}
+
+    with caplog.at_level(logging.INFO, logger="aiorchestra.stages.review"):
+        from aiorchestra.stages.review import _run_cross_model_review
+
+        ok, feedback = _run_cross_model_review(DIFF, tier_cfg, ISSUE, None)
+
+    assert not ok
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("flagged issues" in m for m in info_msgs)
+
+
+# ---------------------------------------------------------------------------
+# _cli.py — provider + model logged on invocation
+# ---------------------------------------------------------------------------
+
+
+def test_cli_provider_logs_model(monkeypatch, caplog):
+    import subprocess
+
+    from aiorchestra.ai._claude_code import ClaudeCodeProvider
+
+    def fake_run(cmd, **kwargs):
+        return types.SimpleNamespace(returncode=0, stdout="LGTM", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    provider = ClaudeCodeProvider({"model": "sonnet", "skip_permissions": True})
+    with caplog.at_level(logging.INFO, logger="aiorchestra.ai._cli"):
+        provider.run("test prompt")
+
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("sonnet" in m for m in info_msgs)
+
+
+def test_cli_provider_logs_default_when_no_model(monkeypatch, caplog):
+    import subprocess
+
+    from aiorchestra.ai._claude_code import ClaudeCodeProvider
+
+    def fake_run(cmd, **kwargs):
+        return types.SimpleNamespace(returncode=0, stdout="LGTM", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    provider = ClaudeCodeProvider({"skip_permissions": True})
+    with caplog.at_level(logging.INFO, logger="aiorchestra.ai._cli"):
+        provider.run("test prompt")
+
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("default" in m for m in info_msgs)
+
+
+# ---------------------------------------------------------------------------
+# implement.py — provider + model + prompt_name logged
+# ---------------------------------------------------------------------------
+
+
+def test_implement_logs_provider_and_model(monkeypatch, caplog):
+    from aiorchestra.stages import implement as impl_mod
+
+    monkeypatch.setattr(impl_mod, "render_template", lambda name, **kw: "prompt text")
+    monkeypatch.setattr(
+        impl_mod,
+        "create_provider",
+        lambda cfg: FakeProvider(output="done"),
+    )
+
+    issue = {"number": 1, "title": "Test", "body": "", "comments": []}
+    config = {"ai": {"provider": "claude-code", "model": "opus"}}
+
+    with caplog.at_level(logging.INFO, logger="aiorchestra.stages.implement"):
+        from aiorchestra.stages.implement import implement
+
+        implement(issue, config, prompt_name="implement")
+
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("claude-code" in m for m in info_msgs)
+    assert any("opus" in m for m in info_msgs)
+    assert any("implement" in m for m in info_msgs)
+
+
+# ---------------------------------------------------------------------------
+# pipeline.py — remediation feedback logged
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_logs_feedback_on_remediation(monkeypatch, caplog, tmp_path):
+    from aiorchestra.pipeline import Pipeline
+
+    feedback_text = "Review: missing error handling in handler.py"
+
+    review_calls = [0]
+
+    def fake_check(repo, branch, config, *, issue=None, repo_root=None):
+        review_calls[0] += 1
+        if review_calls[0] == 1:
+            return False, feedback_text
+        return True, None
+
+    monkeypatch.setattr("aiorchestra.pipeline.prepare_environment", lambda r, b, w: str(tmp_path))
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {"ai": {"max_retries": 2}, "ci": {"enabled": False}},
+    )
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, cfg: "")
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda r: True)
+    monkeypatch.setattr("aiorchestra.pipeline._branch_has_existing_work", lambda r: False)
+    monkeypatch.setattr("aiorchestra.pipeline.validate", lambda cfg, repo_root=None: (True, None))
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.implement",
+        lambda issue, cfg, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: (
+            InvokeResult(success=True)
+        ),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: "https://example.test/pr/1",
+    )
+    monkeypatch.setattr("aiorchestra.pipeline.review", fake_check)
+    monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda r, n, lbl: True)
+    monkeypatch.setattr("aiorchestra.pipeline.remove_label", lambda r, n, lbl: True)
+    monkeypatch.setattr("aiorchestra.pipeline.swap_label", lambda r, n, rm, add: True)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        parallel=False,
+    )
+
+    with caplog.at_level(logging.INFO, logger="aiorchestra.pipeline"):
+        pipeline.run(issues=[{"number": 1, "title": "Test"}])
+
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("missing error handling" in m for m in info_msgs)
+
+
+# ---------------------------------------------------------------------------
+# ci.py — CI failure output logged
+# ---------------------------------------------------------------------------
+
+
+def test_ci_logs_failure_output_at_info(monkeypatch, caplog):
+    from aiorchestra.stages import ci as ci_mod
+
+    failure_lines = ["line " + str(i) for i in range(30)]
+    failure_output = "\n".join(failure_lines)
+
+    call_count = [0]
+
+    def fake_run(cmd, logger=None):
+        call_count[0] += 1
+        if "checks" in cmd and "--fail-fast" not in cmd:
+            checks = [{"name": "test", "bucket": "fail", "state": "FAILURE", "link": "http://ci"}]
+            return types.SimpleNamespace(returncode=0, stdout=json.dumps(checks), stderr="")
+        # _fetch_failure_logs call
+        return types.SimpleNamespace(returncode=0, stdout=failure_output, stderr="")
+
+    monkeypatch.setattr(ci_mod, "run_command", fake_run)
+
+    with caplog.at_level(logging.INFO, logger="aiorchestra.stages.ci"):
+        from aiorchestra.stages.ci import wait_for_ci
+
+        ok, output = wait_for_ci("https://pr/1", {"ci": {"timeout": 1, "poll_interval": 0}})
+
+    assert not ok
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("first 20 lines" in m for m in info_msgs)
+    # Only first 20 lines should appear at INFO
+    matching = next(m for m in info_msgs if "first 20 lines" in m)
+    assert "line 19" in matching
+    assert "line 20" not in matching
+
+
+def test_ci_logs_full_output_at_debug(monkeypatch, caplog):
+    from aiorchestra.stages import ci as ci_mod
+
+    failure_lines = ["line " + str(i) for i in range(30)]
+    failure_output = "\n".join(failure_lines)
+
+    def fake_run(cmd, logger=None):
+        if "checks" in cmd and "--fail-fast" not in cmd:
+            checks = [{"name": "test", "bucket": "fail", "state": "FAILURE", "link": "http://ci"}]
+            return types.SimpleNamespace(returncode=0, stdout=json.dumps(checks), stderr="")
+        return types.SimpleNamespace(returncode=0, stdout=failure_output, stderr="")
+
+    monkeypatch.setattr(ci_mod, "run_command", fake_run)
+
+    with caplog.at_level(logging.DEBUG, logger="aiorchestra.stages.ci"):
+        from aiorchestra.stages.ci import wait_for_ci
+
+        wait_for_ci("https://pr/1", {"ci": {"timeout": 1, "poll_interval": 0}})
+
+    debug_msgs = [r.message for r in caplog.records if r.levelname == "DEBUG"]
+    assert any("full output" in m for m in debug_msgs)
+    full_msg = next(m for m in debug_msgs if "full output" in m)
+    assert "line 29" in full_msg
+
+
+# ---------------------------------------------------------------------------
+# clarification.py — clarification message logged
+# ---------------------------------------------------------------------------
+
+
+def test_clarification_logs_message(monkeypatch, caplog):
+    from aiorchestra.stages import clarification as clar_mod
+    from aiorchestra.stages import labels as labels_mod
+
+    def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(clar_mod, "run_command", fake_run)
+    monkeypatch.setattr(labels_mod, "run_command", fake_run)
+
+    from aiorchestra.stages.clarification import request_clarification
+
+    with caplog.at_level(logging.INFO, logger="aiorchestra.stages.clarification"):
+        request_clarification(
+            "owner/repo",
+            {"number": 7, "title": "Ambiguous"},
+            "Which database adapter?",
+        )
+
+    info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
+    assert any("Which database adapter?" in m for m in info_msgs)

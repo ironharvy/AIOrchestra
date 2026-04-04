@@ -49,7 +49,8 @@ class CLIProvider(AIProvider):
         if self._prompt_via_stdin:
             kwargs["input"] = prompt
 
-        log.info("Invoking %s CLI...", self._cli_name)
+        model = self._config.get("model", "default")
+        log.info("Invoking %s CLI (model=%s)...", self._cli_name, model)
         result = subprocess.run(cmd, **kwargs)
 
         if result.returncode != 0:
