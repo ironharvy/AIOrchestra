@@ -45,6 +45,16 @@ def _has_changes(repo_root: str) -> bool:
     return bool(result.stdout.strip())
 
 
+def _branch_has_existing_work(repo_root: str) -> bool:
+    """Return True if the current branch has commits ahead of origin/main."""
+    result = run_command(
+        ["git", "diff", "--stat", "origin/main...HEAD"],
+        cwd=repo_root,
+        logger=log,
+    )
+    return bool(result.stdout.strip())
+
+
 @dataclass(frozen=True)
 class _IssueContext:
     repo: str
@@ -249,7 +259,13 @@ class Pipeline:
         if ctx is None:
             return False
 
-        loop_result = self._run_validation_loop(ctx)
+        if _branch_has_existing_work(ctx.repo_root):
+            log.info("Branch has existing work — using rework mode")
+            initial_prompt = "rework"
+        else:
+            initial_prompt = "implement"
+
+        loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
         if loop_result == _DEFERRED:
             return _DEFERRED
         if not loop_result:

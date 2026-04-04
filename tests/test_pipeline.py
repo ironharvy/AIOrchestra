@@ -487,6 +487,112 @@ def test_claim_and_process_adds_agent_failed_on_failure(monkeypatch, tmp_path):
     assert ("add", "awaiting-review") not in label_calls
 
 
+def test_rework_mode_used_when_branch_has_existing_work(monkeypatch, tmp_path):
+    """Pipeline uses 'rework' prompt when branch already has commits vs origin/main."""
+    calls: list[tuple] = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: True
+    )
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    def fake_implement(
+        issue,
+        config,
+        prompt_name="implement",
+        error_text=None,
+        repo_root=None,
+        osint_context="",
+        repo=None,
+    ):
+        calls.append(("implement", prompt_name))
+        return InvokeResult(success=True)
+
+    monkeypatch.setattr("aiorchestra.pipeline.implement", fake_implement)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.validate", lambda config, repo_root=None: (True, None)
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: "https://example.test/pr/1",
+    )
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+    )
+
+    assert pipeline._process_issue({"number": 24, "title": "Rework me"}) is True
+    assert calls == [("implement", "rework")]
+
+
+def test_implement_mode_used_when_branch_has_no_existing_work(monkeypatch, tmp_path):
+    """Pipeline uses 'implement' prompt when branch has no commits vs origin/main."""
+    calls: list[tuple] = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: False
+    )
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    def fake_implement(
+        issue,
+        config,
+        prompt_name="implement",
+        error_text=None,
+        repo_root=None,
+        osint_context="",
+        repo=None,
+    ):
+        calls.append(("implement", prompt_name))
+        return InvokeResult(success=True)
+
+    monkeypatch.setattr("aiorchestra.pipeline.implement", fake_implement)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.validate", lambda config, repo_root=None: (True, None)
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: "https://example.test/pr/1",
+    )
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+    )
+
+    assert pipeline._process_issue({"number": 11, "title": "Fresh issue"}) is True
+    assert calls == [("implement", "implement")]
+
+
 def test_prepare_fails_on_low_disk_space(monkeypatch, tmp_path):
     """Preparation must refuse to proceed when disk space is too low."""
     from aiorchestra.stages import prepare as prep_mod
