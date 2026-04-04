@@ -95,7 +95,12 @@ def _fetch_failure_logs(pr_url: str) -> str:
     seen_runs: set[str] = set()
     for check in failures:
         link = check.get("link", "")
-        run_url = link.split("/job/")[0] if "/job/" in link else ""
+        if "/job/" in link:
+            run_url = link.split("/job/")[0]
+        elif "/runs/" in link:
+            run_url = link
+        else:
+            run_url = ""
         if run_url and run_url not in seen_runs:
             seen_runs.add(run_url)
             log_result = run_command(
