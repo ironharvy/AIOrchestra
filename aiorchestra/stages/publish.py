@@ -106,6 +106,10 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
         log.info("PR already exists: %s", pr_url)
         return pr_url
 
+    # Non-zero exit from `gh pr view` is the normal "no PR found" case —
+    # stderr from gh is captured but intentionally not logged here to avoid
+    # false-alarm noise on every first-run pipeline execution.
+    log.debug("No existing PR for branch %s (gh pr view exited %d)", branch, existing.returncode)
     log.info("Creating PR for issue #%d", issue["number"])
     result = run_command(
         ["gh", "pr", "create", "--repo", repo, "--head", branch, "--title", title, "--body", body],
