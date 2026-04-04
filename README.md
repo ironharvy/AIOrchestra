@@ -159,7 +159,7 @@ label: "claude"
 
 ai:
   provider: "claude-code"   # "claude-code" (CLI) or "claude-api"
-  model: "sonnet"
+  model: "claude-opus-4-6"
   max_retries: 3
   skip_permissions: true    # use --dangerously-skip-permissions (default: true)
   # allowed_tools:          # optional — restrict agent's tool access

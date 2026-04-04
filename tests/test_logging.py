@@ -409,12 +409,12 @@ def test_cli_provider_logs_model(monkeypatch, caplog):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    provider = ClaudeCodeProvider({"model": "sonnet", "skip_permissions": True})
+    provider = ClaudeCodeProvider({"model": "claude-opus-4-6", "skip_permissions": True})
     with caplog.at_level(logging.INFO, logger="aiorchestra.ai._cli"):
         provider.run("test prompt")
 
     info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
-    assert any("sonnet" in m for m in info_msgs)
+    assert any("claude-opus-4-6" in m for m in info_msgs)
 
 
 def test_cli_provider_logs_default_when_no_model(monkeypatch, caplog):
