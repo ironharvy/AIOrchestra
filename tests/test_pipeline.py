@@ -504,9 +504,7 @@ def test_rework_mode_used_when_branch_has_existing_work(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
-    monkeypatch.setattr(
-        "aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: True
-    )
+    monkeypatch.setattr("aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: True)
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     def fake_implement(
@@ -557,9 +555,7 @@ def test_implement_mode_used_when_branch_has_no_existing_work(monkeypatch, tmp_p
         },
     )
     monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
-    monkeypatch.setattr(
-        "aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: False
-    )
+    monkeypatch.setattr("aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: False)
     monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
 
     def fake_implement(
