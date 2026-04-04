@@ -493,8 +493,8 @@ def test_pipeline_logs_feedback_on_remediation(monkeypatch, caplog, tmp_path):
     monkeypatch.setattr("aiorchestra.pipeline.validate", lambda cfg, repo_root=None: (True, None))
     monkeypatch.setattr(
         "aiorchestra.pipeline.implement",
-        lambda issue, cfg, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: InvokeResult(
-            success=True
+        lambda issue, cfg, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: (
+            InvokeResult(success=True)
         ),
     )
     monkeypatch.setattr(
