@@ -65,7 +65,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)",
     )
     run.add_argument("--dry-run", action="store_true", help="Show plan without executing")
-    run.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    run.add_argument(
+        "--verbose",
+        "-v",
+        action="count",
+        default=0,
+        help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
+    )
     run.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
     )
@@ -92,7 +98,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)",
     )
     dispatch.add_argument("--dry-run", action="store_true", help="Show plan without executing")
-    dispatch.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    dispatch.add_argument(
+        "--verbose",
+        "-v",
+        action="count",
+        default=0,
+        help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
+    )
     dispatch.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
     )
@@ -113,7 +125,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="GitHub repos (owner/repo) to create labels in",
     )
     setup.add_argument("--dry-run", action="store_true", help="Show what would be created")
-    setup.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    setup.add_argument(
+        "--verbose",
+        "-v",
+        action="count",
+        default=0,
+        help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
+    )
 
     return parser
 
@@ -132,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    setup_logging(verbose=getattr(args, "verbose", False))
+    setup_logging(verbosity=getattr(args, "verbose", 0))
 
     if args.command == "run":
         config = load_config(args.config)
