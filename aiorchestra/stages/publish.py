@@ -90,8 +90,25 @@ def _push_branch(branch: str, repo_root: str) -> bool:
     return True
 
 
+def _find_existing_pr(repo: str, branch: str, repo_root: str) -> str | None:
+    """Return the URL of an open PR for *branch*, or ``None`` if none exists."""
+    result = run_command(
+        ["gh", "pr", "view", "--repo", repo, "--head", branch, "--json", "url", "--jq", ".url"],
+        cwd=repo_root,
+        logger=log,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return None
+
+
 def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> PublishResult:
-    """Create a PR for the pushed branch."""
+    """Create a PR for the pushed branch, or return the existing one."""
+    existing = _find_existing_pr(repo, branch, repo_root)
+    if existing:
+        log.info("PR already exists for branch %s: %s", branch, existing)
+        return existing
+
     title = f"Fix #{issue['number']}: {issue['title']}"
     body = f"Automated implementation for #{issue['number']}.\n\nCloses #{issue['number']}"
 
