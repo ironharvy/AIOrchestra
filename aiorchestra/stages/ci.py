@@ -18,7 +18,9 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
     timeout = ci_cfg.get("timeout", 600)
     poll_interval = ci_cfg.get("poll_interval", 30)
 
-    deadline = time.monotonic() + timeout
+    ci_start = time.monotonic()
+    deadline = ci_start + timeout
+    poll_count = 0
     log.info("Waiting for CI (timeout=%ds)...", timeout)
 
     while time.monotonic() < deadline:
@@ -26,6 +28,7 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
             ["gh", "pr", "checks", pr_url, "--json", _CI_FIELDS],
             logger=log,
         )
+        poll_count += 1
         if result.returncode != 0:
             log.warning("Failed to check CI status: %s", result.stderr.strip())
             time.sleep(poll_interval)
@@ -44,8 +47,10 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
             time.sleep(poll_interval)
             continue
 
+        elapsed = time.monotonic() - ci_start
         all_passed = all(c.get("bucket") == "pass" for c in checks)
         if all_passed:
+            log.info("[ci] completed in %.1fs (%d polls)", elapsed, poll_count)
             log.info("CI passed.")
             return True, None
 
@@ -54,6 +59,7 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
             f"- {c['name']}: {c.get('state', 'unknown')} ({c.get('link', '')})" for c in failures
         )
         log.warning("CI failed:\n%s", summary)
+        log.info("[ci] completed in %.1fs (%d polls)", elapsed, poll_count)
 
         log_output = _fetch_failure_logs(pr_url)
         if log_output:
@@ -62,6 +68,8 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
             log.debug("CI failure full output:\n%s", log_output)
         return False, f"CI failures:\n{summary}\n\n{log_output}"
 
+    elapsed = time.monotonic() - ci_start
+    log.info("[ci] completed in %.1fs (%d polls)", elapsed, poll_count)
     log.error("CI timed out after %ds", timeout)
     return False, "CI timed out."
 

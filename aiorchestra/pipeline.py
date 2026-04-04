@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 import logging
 import os
+import time
 
 from aiorchestra.ai import agent_family_from_config, build_agent_branch
 from aiorchestra.config import load_config
@@ -33,6 +35,15 @@ log = logging.getLogger(__name__)
 
 # Sentinel: issue was deferred (not a failure — just waiting for human input).
 _DEFERRED = "deferred"
+
+
+def _fmt_duration(seconds: float) -> str:
+    """Format a duration in seconds for human-readable log output."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    mins = int(seconds) // 60
+    secs = int(seconds) % 60
+    return f"{mins}m{secs:02d}s"
 
 
 def _has_changes(repo_root: str) -> bool:
@@ -255,7 +266,12 @@ class Pipeline:
     def _process_issue(self, issue: IssueData) -> bool | str:
         """Process a single issue. Returns True on success, False on failure,
         or ``_DEFERRED`` when the issue needs human clarification."""
+        issue_start = time.monotonic()
+
+        t0 = time.monotonic()
         ctx = self._prepare_issue(issue)
+        prepare_elapsed = time.monotonic() - t0
+        log.info("[prepare] completed in %s", _fmt_duration(prepare_elapsed))
         if ctx is None:
             return False
 
@@ -265,29 +281,49 @@ class Pipeline:
         else:
             initial_prompt = "implement"
 
+        t0 = time.monotonic()
         loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
+        impl_elapsed = time.monotonic() - t0
         if loop_result == _DEFERRED:
             return _DEFERRED
         if not loop_result:
             return False
 
+        t0 = time.monotonic()
         pr_url = publish(
             ctx.repo,
             ctx.branch,
             ctx.issue,
             repo_root=ctx.repo_root,
         )
+        publish_elapsed = time.monotonic() - t0
+        log.info("[publish] completed in %s", _fmt_duration(publish_elapsed))
         if not pr_url:
             return False
 
+        t0 = time.monotonic()
         pr_url = self._run_ci_fix_loop(ctx, pr_url)
+        ci_elapsed = time.monotonic() - t0
         if not pr_url:
             return False
 
+        t0 = time.monotonic()
         pr_url = self._run_review_fix_loop(ctx, pr_url)
+        review_elapsed = time.monotonic() - t0
         if not pr_url:
             return False
 
+        total_elapsed = time.monotonic() - issue_start
+        log.info(
+            "Issue #%d total: %s (prepare: %s, impl+validate: %s, publish: %s, ci: %s, review: %s)",
+            issue["number"],
+            _fmt_duration(total_elapsed),
+            _fmt_duration(prepare_elapsed),
+            _fmt_duration(impl_elapsed),
+            _fmt_duration(publish_elapsed),
+            _fmt_duration(ci_elapsed),
+            _fmt_duration(review_elapsed),
+        )
         log.info("Issue #%d completed successfully.", issue["number"])
         return True
 
@@ -300,6 +336,18 @@ class Pipeline:
         log.info("Working in %s", repo_root)
         config = load_config(self.config_path, repo_root=repo_root)
 
+        # Log resolved config at startup.
+        ai_cfg = config.get("ai", {})
+        review_cfg = config.get("review", {})
+        ci_cfg = config.get("ci", {})
+        enabled_tiers = [t.get("name", "?") for t in review_cfg.get("tiers", []) if t.get("enabled", False)]
+        log.info(
+            "Config: provider=%s model=%s review=%s ci_timeout=%ss",
+            ai_cfg.get("provider", "claude-code"),
+            ai_cfg.get("model", "default"),
+            enabled_tiers or "(legacy)",
+            ci_cfg.get("timeout", 600),
+        )
         # OSINT enrichment — runs locally, zero cloud tokens.
         osint_config = config.get("osint", {})
         osint_context = enrich_issue(issue, osint_config)
@@ -329,10 +377,16 @@ class Pipeline:
         for attempt in range(1, ctx.max_retries + 1):
             log.info("%s attempt %d/%d", attempt_label, attempt, ctx.max_retries)
 
+            t0 = time.monotonic()
             impl_result = self._implement(
                 ctx,
                 prompt_name=current_prompt,
                 error_text=validation_errors,
+            )
+            log.info(
+                "[implement] attempt %d completed in %s",
+                attempt,
+                _fmt_duration(time.monotonic() - t0),
             )
             if impl_result == _DEFERRED:
                 return _DEFERRED
