@@ -530,16 +530,18 @@ def test_ci_logs_failure_output_at_info(monkeypatch, caplog):
 
     failure_lines = ["line " + str(i) for i in range(30)]
     failure_output = "\n".join(failure_lines)
+    job_link = "https://github.com/owner/repo/actions/runs/123/job/456"
 
     call_count = [0]
 
     def fake_run(cmd, logger=None):
         call_count[0] += 1
-        if "checks" in cmd and "--fail-fast" not in cmd:
-            checks = [{"name": "test", "bucket": "fail", "state": "FAILURE", "link": "http://ci"}]
-            return types.SimpleNamespace(returncode=0, stdout=json.dumps(checks), stderr="")
-        # _fetch_failure_logs call
-        return types.SimpleNamespace(returncode=0, stdout=failure_output, stderr="")
+        if "run" in cmd and "view" in cmd:
+            # gh run view <url> --log-failed
+            return types.SimpleNamespace(returncode=0, stdout=failure_output, stderr="")
+        # gh pr checks (both polling and log-fetch)
+        checks = [{"name": "test", "bucket": "fail", "state": "FAILURE", "link": job_link}]
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps(checks), stderr="")
 
     monkeypatch.setattr(ci_mod, "run_command", fake_run)
 
@@ -562,12 +564,13 @@ def test_ci_logs_full_output_at_debug(monkeypatch, caplog):
 
     failure_lines = ["line " + str(i) for i in range(30)]
     failure_output = "\n".join(failure_lines)
+    job_link = "https://github.com/owner/repo/actions/runs/123/job/456"
 
     def fake_run(cmd, logger=None):
-        if "checks" in cmd and "--fail-fast" not in cmd:
-            checks = [{"name": "test", "bucket": "fail", "state": "FAILURE", "link": "http://ci"}]
-            return types.SimpleNamespace(returncode=0, stdout=json.dumps(checks), stderr="")
-        return types.SimpleNamespace(returncode=0, stdout=failure_output, stderr="")
+        if "run" in cmd and "view" in cmd:
+            return types.SimpleNamespace(returncode=0, stdout=failure_output, stderr="")
+        checks = [{"name": "test", "bucket": "fail", "state": "FAILURE", "link": job_link}]
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps(checks), stderr="")
 
     monkeypatch.setattr(ci_mod, "run_command", fake_run)
 

@@ -76,5 +76,32 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
 
 def _fetch_failure_logs(pr_url: str) -> str:
     """Best-effort fetch of CI failure logs."""
-    result = run_command(["gh", "pr", "checks", pr_url, "--fail-fast"], logger=log)
-    return result.stdout + result.stderr
+    result = run_command(
+        ["gh", "pr", "checks", pr_url, "--json", "name,link,state,bucket"],
+        logger=log,
+    )
+    if result.returncode != 0:
+        return ""
+    try:
+        checks = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+
+    failures = [c for c in checks if c.get("bucket") == "fail"]
+    if not failures:
+        return ""
+
+    logs = []
+    seen_runs: set[str] = set()
+    for check in failures:
+        link = check.get("link", "")
+        run_url = link.split("/job/")[0] if "/job/" in link else ""
+        if run_url and run_url not in seen_runs:
+            seen_runs.add(run_url)
+            log_result = run_command(
+                ["gh", "run", "view", run_url, "--log-failed"],
+                logger=log,
+            )
+            if log_result.returncode == 0:
+                logs.append(log_result.stdout)
+    return "\n---\n".join(logs) if logs else ""
