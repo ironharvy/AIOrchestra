@@ -92,6 +92,7 @@ class Pipeline:
         dry_run: bool = False,
         workspace: str | None = None,
         parallel: bool = True,
+        review_only: bool = False,
     ):
         self.repo = repo
         self.label = label
@@ -101,6 +102,7 @@ class Pipeline:
         self.dry_run = dry_run
         self.workspace = workspace
         self.parallel = parallel
+        self.review_only = review_only
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -267,6 +269,9 @@ class Pipeline:
     def _process_issue(self, issue: IssueData) -> bool | str:
         """Process a single issue. Returns True on success, False on failure,
         or ``_DEFERRED`` when the issue needs human clarification."""
+        if self.review_only:
+            return self._process_issue_review_only(issue)
+
         issue_start = time.monotonic()
 
         t0 = time.monotonic()
@@ -327,6 +332,65 @@ class Pipeline:
         )
         log.info("Issue #%d completed successfully.", issue["number"])
         return True
+
+    def _process_issue_review_only(self, issue: IssueData) -> bool:
+        """Review-only mode: validate and review existing work without implementing.
+
+        Skips implementation, publishing, and CI — just runs validation and
+        the review tiers on whatever code is already on the branch.
+        """
+        issue_start = time.monotonic()
+        log.info("Review-only mode for issue #%d", issue["number"])
+
+        t0 = time.monotonic()
+        ctx = self._prepare_issue(issue)
+        prepare_elapsed = time.monotonic() - t0
+        log.info("[prepare] completed in %s", _fmt_duration(prepare_elapsed))
+        if ctx is None:
+            return False
+
+        if not _branch_has_existing_work(ctx.repo_root):
+            log.error("Review-only mode requires existing work on the branch")
+            return False
+
+        passed = True
+
+        # Run validation (tests, lint, static analysis).
+        t0 = time.monotonic()
+        val_ok, val_feedback = validate(ctx.config, repo_root=ctx.repo_root)
+        validate_elapsed = time.monotonic() - t0
+        log.info("[validate] completed in %s", _fmt_duration(validate_elapsed))
+        if not val_ok:
+            log.warning("Validation failed: %.500s", val_feedback)
+            passed = False
+
+        # Run review tiers.
+        t0 = time.monotonic()
+        rev_ok, rev_feedback = review(
+            ctx.repo,
+            ctx.branch,
+            ctx.config,
+            issue=ctx.issue,
+            repo_root=ctx.repo_root,
+        )
+        review_elapsed = time.monotonic() - t0
+        log.info("[review] completed in %s", _fmt_duration(review_elapsed))
+        if not rev_ok:
+            log.warning("Review failed: %.500s", rev_feedback)
+            passed = False
+
+        total_elapsed = time.monotonic() - issue_start
+        status = "PASSED" if passed else "FAILED"
+        log.info(
+            "Review-only #%d %s — total: %s (prepare: %s, validate: %s, review: %s)",
+            issue["number"],
+            status,
+            _fmt_duration(total_elapsed),
+            _fmt_duration(prepare_elapsed),
+            _fmt_duration(validate_elapsed),
+            _fmt_duration(review_elapsed),
+        )
+        return passed
 
     def _prepare_issue(self, issue: IssueData) -> _IssueContext | None:
         branch = build_agent_branch(self.config, issue["number"])
