@@ -5,7 +5,7 @@ label: "claude"
 
 ai:
   provider: "claude-code"   # "claude-code", "codex", "gemini", "opencode", "jules", "ollama"
-  model: "sonnet"           # model hint forwarded to the provider's --model flag
+  model: "claude-opus-4-6"  # model hint forwarded to the provider's --model flag
   max_retries: 3
 
 # OpenCode provider example:

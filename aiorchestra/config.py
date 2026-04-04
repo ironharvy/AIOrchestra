@@ -14,7 +14,7 @@ DEFAULTS = {
     "label": "claude",
     "ai": {
         "provider": "claude-code",
-        "model": "sonnet",
+        "model": "claude-opus-4-6",
         "max_retries": 3,
         "skip_permissions": True,
     },
@@ -27,7 +27,7 @@ DEFAULTS = {
         "tiers": [
             {
                 "name": "static-analysis",
-                "enabled": False,
+                "enabled": True,
                 "commands": [
                     "semgrep --config=auto --quiet .",
                     "bandit -r . -q",
@@ -37,6 +37,7 @@ DEFAULTS = {
                 "name": "ai-review",
                 "enabled": True,
                 "provider": "claude-code",
+                "model": "claude-sonnet-4-6",
             },
             {
                 "name": "cross-model-review",
@@ -51,9 +52,9 @@ DEFAULTS = {
             },
             {
                 "name": "cross-agent-review",
-                "enabled": False,
+                "enabled": True,
                 "provider": "auto",
-                "strict": True,
+                "strict": False,
             },
             {
                 "name": "human-required",
