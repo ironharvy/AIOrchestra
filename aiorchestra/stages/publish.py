@@ -95,6 +95,17 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
     title = f"Fix #{issue['number']}: {issue['title']}"
     body = f"Automated implementation for #{issue['number']}.\n\nCloses #{issue['number']}"
 
+    log.info("Checking for existing PR for branch %s", branch)
+    existing = run_command(
+        ["gh", "pr", "view", "--repo", repo, branch, "--json", "url", "--jq", ".url"],
+        cwd=repo_root,
+        logger=log,
+    )
+    if existing.returncode == 0 and existing.stdout.strip():
+        pr_url = existing.stdout.strip()
+        log.info("PR already exists: %s", pr_url)
+        return pr_url
+
     log.info("Creating PR for issue #%d", issue["number"])
     result = run_command(
         ["gh", "pr", "create", "--repo", repo, "--head", branch, "--title", title, "--body", body],
