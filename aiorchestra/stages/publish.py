@@ -102,6 +102,41 @@ def _find_existing_pr(repo: str, branch: str, repo_root: str) -> str | None:
     return None
 
 
+def _build_pr_body(issue: IssueData, repo_root: str) -> str:
+    """Build a descriptive PR body from the issue metadata and diff stats."""
+    number = issue["number"]
+    sections: list[str] = []
+
+    # Summary
+    sections.append(f"Automated implementation for #{number}.")
+
+    # Issue context — reproduce the original description so reviewers don't
+    # have to click through.
+    issue_body = issue.get("body", "").strip()
+    if issue_body:
+        sections.append(f"## Issue description\n\n{issue_body}")
+
+    # Changed files summary via git diff --stat (zero AI cost).
+    diff_stat = run_command(
+        ["git", "diff", "--stat", "origin/main...HEAD"],
+        cwd=repo_root,
+        logger=log,
+    )
+    if diff_stat.returncode == 0 and diff_stat.stdout.strip():
+        sections.append(f"## Changes\n\n```\n{diff_stat.stdout.strip()}\n```")
+
+    # Labels carried over from the issue.
+    labels = issue.get("labels", [])
+    if labels:
+        badge_list = ", ".join(f"`{lbl}`" for lbl in labels)
+        sections.append(f"**Labels:** {badge_list}")
+
+    # Closing reference must come last so GitHub links the PR to the issue.
+    sections.append(f"Closes #{number}")
+
+    return "\n\n".join(sections)
+
+
 def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> PublishResult:
     """Create a PR for the pushed branch, or return the existing one."""
     existing = _find_existing_pr(repo, branch, repo_root)
@@ -110,7 +145,7 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
         return existing
 
     title = f"Fix #{issue['number']}: {issue['title']}"
-    body = f"Automated implementation for #{issue['number']}.\n\nCloses #{issue['number']}"
+    body = _build_pr_body(issue, repo_root)
 
     log.info("Checking for existing PR for branch %s", branch)
     existing = run_command(
