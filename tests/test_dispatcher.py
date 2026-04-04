@@ -201,7 +201,7 @@ def test_cli_dispatch_defaults():
     assert args.config is None
     assert args.workspace is None
     assert args.dry_run is False
-    assert args.verbose is False
+    assert args.verbose == 0
 
 
 def test_cli_dispatch_with_flags():
@@ -224,7 +224,7 @@ def test_cli_dispatch_with_flags():
     assert args.config == "custom.yaml"
     assert args.workspace == "/tmp/ws"
     assert args.dry_run is True
-    assert args.verbose is True
+    assert args.verbose == 1
 
 
 # ---------------------------------------------------------------------------
