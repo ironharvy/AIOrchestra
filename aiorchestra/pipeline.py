@@ -340,7 +340,9 @@ class Pipeline:
         ai_cfg = config.get("ai", {})
         review_cfg = config.get("review", {})
         ci_cfg = config.get("ci", {})
-        enabled_tiers = [t.get("name", "?") for t in review_cfg.get("tiers", []) if t.get("enabled", False)]
+        enabled_tiers = [
+            t.get("name", "?") for t in review_cfg.get("tiers", []) if t.get("enabled", False)
+        ]
         log.info(
             "Config: provider=%s model=%s review=%s ci_timeout=%ss",
             ai_cfg.get("provider", "claude-code"),

@@ -3,9 +3,15 @@
 import types
 
 from aiorchestra.stages import publish as pub_mod
-from aiorchestra.stages.publish import _create_pr, _find_existing_pr, publish
+from aiorchestra.stages.publish import _build_pr_body, _create_pr, _find_existing_pr, publish
 
 ISSUE = {"number": 24, "title": "Add multi-level verbose logging"}
+ISSUE_RICH = {
+    "number": 24,
+    "title": "Add multi-level verbose logging",
+    "body": "We need verbose, debug, and trace levels.",
+    "labels": ["enhancement", "logging"],
+}
 REPO = "owner/repo"
 BRANCH = "claude/24"
 REPO_ROOT = "/tmp/fake-repo"
@@ -86,12 +92,54 @@ def test_create_pr_creates_new_when_none_exists(monkeypatch):
             return _make_result(returncode=1, stderr="no pull requests found")
         if "create" in cmd:
             return _make_result(stdout=new_url + "\n")
+        # git diff --stat for PR body builder
+        if "diff" in cmd:
+            return _make_result(stdout=" file.py | 2 +-\n 1 file changed\n")
         return _make_result()
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run_command)
 
     result = _create_pr(REPO, BRANCH, ISSUE, REPO_ROOT)
     assert result == new_url
+
+
+# ---------------------------------------------------------------------------
+# _build_pr_body
+# ---------------------------------------------------------------------------
+
+
+def test_build_pr_body_minimal(monkeypatch):
+    """A minimal issue (no body/labels) still produces a valid PR body."""
+    monkeypatch.setattr(
+        pub_mod,
+        "run_command",
+        lambda cmd, cwd=None, logger=None: _make_result(stdout=""),
+    )
+    body = _build_pr_body(ISSUE, REPO_ROOT)
+    assert "Automated implementation for #24" in body
+    assert "Closes #24" in body
+    # No issue-description or labels sections
+    assert "## Issue description" not in body
+    assert "**Labels:**" not in body
+
+
+def test_build_pr_body_rich(monkeypatch):
+    """A rich issue includes description, diff stats, and labels."""
+    diff_stat = " src/log.py | 10 +++++++---\n 1 file changed, 7 insertions(+), 3 deletions(-)"
+
+    monkeypatch.setattr(
+        pub_mod,
+        "run_command",
+        lambda cmd, cwd=None, logger=None: _make_result(stdout=diff_stat),
+    )
+    body = _build_pr_body(ISSUE_RICH, REPO_ROOT)
+    assert "## Issue description" in body
+    assert "verbose, debug, and trace levels" in body
+    assert "## Changes" in body
+    assert "src/log.py" in body
+    assert "`enhancement`" in body
+    assert "`logging`" in body
+    assert "Closes #24" in body
 
 
 # ---------------------------------------------------------------------------
