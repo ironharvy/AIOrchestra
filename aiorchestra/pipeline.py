@@ -9,6 +9,7 @@ import typing
 import os
 import time
 
+from aiorchestra._sentry import add_breadcrumb, capture_exception, set_context, set_tag
 from aiorchestra.ai import agent_family_from_config, build_agent_branch
 from aiorchestra.config import load_config
 from aiorchestra.stages._shell import run_command
@@ -206,6 +207,7 @@ class Pipeline:
 
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
+            capture_exception()
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
             os._exit(1)
 
@@ -249,6 +251,7 @@ class Pipeline:
             result = self._process_issue(issue)
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
+            capture_exception()
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
             return False
 
@@ -269,10 +272,22 @@ class Pipeline:
         or ``_DEFERRED`` when the issue needs human clarification."""
         issue_start = time.monotonic()
 
+        set_tag("repo", self.repo)
+        set_tag("issue", str(issue["number"]))
+        set_tag("provider", self.config.get("ai", {}).get("provider", "claude-code"))
+        set_context("issue", {
+            "number": issue["number"],
+            "title": issue.get("title", ""),
+            "repo": self.repo,
+        })
+
+        add_breadcrumb(category="pipeline", message=f"Start processing issue #{issue['number']}")
+
         t0 = time.monotonic()
         ctx = self._prepare_issue(issue)
         prepare_elapsed = time.monotonic() - t0
         log.info("[prepare] completed in %s", _fmt_duration(prepare_elapsed))
+        add_breadcrumb(category="stage", message=f"prepare completed in {_fmt_duration(prepare_elapsed)}")
         if ctx is None:
             return False
 
@@ -285,6 +300,11 @@ class Pipeline:
         t0 = time.monotonic()
         loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
         impl_elapsed = time.monotonic() - t0
+        add_breadcrumb(
+            category="stage",
+            message=f"implement+validate completed in {_fmt_duration(impl_elapsed)}",
+            level="info" if loop_result else "error",
+        )
         if loop_result == _DEFERRED:
             return _DEFERRED
         if not loop_result:
@@ -299,18 +319,33 @@ class Pipeline:
         )
         publish_elapsed = time.monotonic() - t0
         log.info("[publish] completed in %s", _fmt_duration(publish_elapsed))
+        add_breadcrumb(
+            category="stage",
+            message=f"publish completed in {_fmt_duration(publish_elapsed)}",
+            level="info" if pr_url else "error",
+        )
         if not pr_url:
             return False
 
         t0 = time.monotonic()
         pr_url = self._run_ci_fix_loop(ctx, pr_url)
         ci_elapsed = time.monotonic() - t0
+        add_breadcrumb(
+            category="stage",
+            message=f"ci completed in {_fmt_duration(ci_elapsed)}",
+            level="info" if pr_url else "error",
+        )
         if not pr_url:
             return False
 
         t0 = time.monotonic()
         pr_url = self._run_review_fix_loop(ctx, pr_url)
         review_elapsed = time.monotonic() - t0
+        add_breadcrumb(
+            category="stage",
+            message=f"review completed in {_fmt_duration(review_elapsed)}",
+            level="info" if pr_url else "error",
+        )
         if not pr_url:
             return False
 

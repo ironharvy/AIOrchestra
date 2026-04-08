@@ -12,3 +12,12 @@ def _mock_ensure_labels(monkeypatch):
 
     monkeypatch.setattr("aiorchestra.stages.labels.ensure_labels", noop)
     monkeypatch.setattr("aiorchestra.pipeline.ensure_labels", noop)
+
+
+@pytest.fixture(autouse=True)
+def _reset_sentry():
+    """Ensure Sentry module state doesn't leak between tests."""
+    import aiorchestra._sentry as _s
+
+    yield
+    _s._initialized = False

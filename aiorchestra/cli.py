@@ -8,6 +8,7 @@ import time
 from typing import Callable
 
 from aiorchestra._logging import setup_logging
+from aiorchestra._sentry import init as _init_sentry
 from aiorchestra.config import load_config
 from aiorchestra.dispatcher import Dispatcher
 from aiorchestra.pipeline import Pipeline
@@ -154,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         config = load_config(args.config)
+        _init_sentry(config)
         pipeline = Pipeline(
             repo=args.repo,
             label=args.label or config.get("label", "claude"),
@@ -169,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "dispatch":
         config = load_config(args.config)
+        _init_sentry(config)
         dispatcher = Dispatcher(
             config=config,
             owner=args.owner,

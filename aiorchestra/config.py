@@ -87,6 +87,11 @@ DEFAULTS = {
             "timeout": 120,
         },
     },
+    "sentry": {
+        "dsn": "",
+        "environment": "production",
+        "traces_sample_rate": 0.0,
+    },
     "watch": {
         "poll_interval": 300,
     },
