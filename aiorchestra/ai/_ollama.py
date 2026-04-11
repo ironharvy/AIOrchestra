@@ -7,7 +7,7 @@ import logging
 import urllib.error
 import urllib.request
 
-from aiorchestra.ai._base import AIProvider, InvokeResult
+from aiorchestra.ai._base import AIProvider, InvokeResult, _parse_clarification
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class OllamaProvider(AIProvider):
             return InvokeResult(success=False)
 
         log.debug("Ollama response length: %d chars", len(response_text))
-        return InvokeResult(success=True, output=response_text)
+        return _parse_clarification(response_text)
 
     def available(self) -> bool:
         """Quick health check — can we reach the Ollama server?"""
