@@ -83,7 +83,7 @@ def run_command_or_fail(
 
         result = run_command_or_fail(cmd, error_msg="git add failed", ...)
     """
-    result = run_command(command, cwd=cwd, shell=shell, logger=logger)
+    result = run_command(command, cwd=cwd, shell=shell, logger=logger)  # nosec B604
     if result.returncode != 0:
         active_logger = logger or log
         detail = result.stderr.strip() or result.stdout.strip()

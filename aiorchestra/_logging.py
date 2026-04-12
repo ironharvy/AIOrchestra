@@ -46,7 +46,6 @@ class HumanFormatter(logging.Formatter):
         return f"{asctime_colored} [{levelname_colored}] {name_colored}: {msg_colored}"
 
 
-
 class JSONFormatter(logging.Formatter):
     """Machine-readable JSON log formatter."""
 

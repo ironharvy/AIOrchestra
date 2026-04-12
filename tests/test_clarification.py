@@ -80,9 +80,7 @@ def test_ollama_provider_parses_clarification(monkeypatch):
 
     from aiorchestra.ai._ollama import OllamaProvider
 
-    response_body = json.dumps(
-        {"response": "NEEDS_CLARIFICATION: Is this Python 2 or 3?"}
-    ).encode()
+    response_body = json.dumps({"response": "NEEDS_CLARIFICATION: Is this Python 2 or 3?"}).encode()
 
     def fake_urlopen(req, timeout=None):
         class FakeResp:
@@ -318,9 +316,7 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
     monkeypatch.setattr("aiorchestra.pipeline.remove_label", lambda repo, number, label: True)
-    monkeypatch.setattr(
-        "aiorchestra.pipeline.swap_label", lambda repo, number, remove, add: True
-    )
+    monkeypatch.setattr("aiorchestra.pipeline.swap_label", lambda repo, number, remove, add: True)
 
     pipeline = Pipeline(
         repo="owner/repo",

@@ -2,7 +2,12 @@
 
 import logging
 
-from aiorchestra.stages._shell import CommandError, has_diff_from_main, run_command, run_command_or_fail
+from aiorchestra.stages._shell import (
+    CommandError,
+    has_diff_from_main,
+    run_command,
+    run_command_or_fail,
+)
 from aiorchestra.stages.types import IssueData, PublishResult
 
 log = logging.getLogger(__name__)
@@ -36,7 +41,6 @@ def publish(
     return _create_pr(repo, branch, issue, repo_root)
 
 
-
 def _commit_changes(issue: IssueData, repo_root: str) -> bool | None:
     """Commit any local changes before pushing.
 
@@ -59,7 +63,9 @@ def _commit_changes(issue: IssueData, repo_root: str) -> bool | None:
 
     log.info("Committing local changes for issue #%d", issue["number"])
     try:
-        run_command_or_fail(["git", "add", "-A"], error_msg="git add failed", cwd=repo_root, logger=log)
+        run_command_or_fail(
+            ["git", "add", "-A"], error_msg="git add failed", cwd=repo_root, logger=log
+        )
         run_command_or_fail(
             ["git", "commit", "-m", f"Fix #{issue['number']}: {issue['title']}"],
             error_msg="git commit failed",
@@ -147,7 +153,19 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
     log.info("Creating PR for issue #%d", issue["number"])
     try:
         result = run_command_or_fail(
-            ["gh", "pr", "create", "--repo", repo, "--head", branch, "--title", title, "--body", body],
+            [
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                repo,
+                "--head",
+                branch,
+                "--title",
+                title,
+                "--body",
+                body,
+            ],
             error_msg="PR creation failed",
             cwd=repo_root,
             logger=log,
