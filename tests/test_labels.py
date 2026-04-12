@@ -153,11 +153,11 @@ def test_swap_label(monkeypatch):
     """swap_label should remove the old label and add the new one."""
     calls = []
 
-    def fake_run(cmd, logger=None):
+    def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
         calls.append(cmd)
         return _completed_process("")
 
-    monkeypatch.setattr("aiorchestra.stages.labels.run_command", fake_run)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run)
 
     result = swap_label("owner/repo", 42, LABEL_WORKING, LABEL_AWAITING_REVIEW)
 

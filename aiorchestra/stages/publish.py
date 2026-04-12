@@ -2,7 +2,12 @@
 
 import logging
 
-from aiorchestra.stages._shell import run_command
+from aiorchestra.stages._shell import (
+    CommandError,
+    has_diff_from_main,
+    run_command,
+    run_command_or_fail,
+)
 from aiorchestra.stages.types import IssueData, PublishResult
 
 log = logging.getLogger(__name__)
@@ -22,7 +27,7 @@ def publish(
 
     # Invariant 3: never push a branch with zero commits ahead of the base.
     # Invariant 4: never create a PR with an empty diff.
-    if not _has_commits_ahead(repo_root):
+    if not has_diff_from_main(repo_root):
         log.error("Nothing to publish — branch has no changes relative to main")
         return None
 
@@ -36,25 +41,20 @@ def publish(
     return _create_pr(repo, branch, issue, repo_root)
 
 
-def _has_commits_ahead(repo_root: str) -> bool:
-    """Return True if HEAD has commits that origin/main does not."""
-    result = run_command(
-        ["git", "log", "origin/main..HEAD", "--oneline"],
-        cwd=repo_root,
-        logger=log,
-    )
-    return bool(result.stdout.strip())
-
-
 def _commit_changes(issue: IssueData, repo_root: str) -> bool | None:
     """Commit any local changes before pushing.
 
     Returns True if changes were committed, False if there was nothing to
     commit, or None on a git error (caller should abort).
     """
-    result = run_command(["git", "status", "--porcelain"], cwd=repo_root, logger=log)
-    if result.returncode != 0:
-        log.error("Failed to inspect git status: %s", result.stderr.strip())
+    try:
+        result = run_command_or_fail(
+            ["git", "status", "--porcelain"],
+            error_msg="Failed to inspect git status",
+            cwd=repo_root,
+            logger=log,
+        )
+    except CommandError:
         return None
 
     if not result.stdout.strip():
@@ -62,18 +62,17 @@ def _commit_changes(issue: IssueData, repo_root: str) -> bool | None:
         return False
 
     log.info("Committing local changes for issue #%d", issue["number"])
-    result = run_command(["git", "add", "-A"], cwd=repo_root, logger=log)
-    if result.returncode != 0:
-        log.error("git add failed: %s", result.stderr.strip())
-        return None
-
-    result = run_command(
-        ["git", "commit", "-m", f"Fix #{issue['number']}: {issue['title']}"],
-        cwd=repo_root,
-        logger=log,
-    )
-    if result.returncode != 0:
-        log.error("git commit failed: %s", result.stderr.strip())
+    try:
+        run_command_or_fail(
+            ["git", "add", "-A"], error_msg="git add failed", cwd=repo_root, logger=log
+        )
+        run_command_or_fail(
+            ["git", "commit", "-m", f"Fix #{issue['number']}: {issue['title']}"],
+            error_msg="git commit failed",
+            cwd=repo_root,
+            logger=log,
+        )
+    except CommandError:
         return None
 
     return True
@@ -82,11 +81,15 @@ def _commit_changes(issue: IssueData, repo_root: str) -> bool | None:
 def _push_branch(branch: str, repo_root: str) -> bool:
     """Push the current branch to origin."""
     log.info("Pushing branch %s", branch)
-    result = run_command(["git", "push", "-u", "origin", branch], cwd=repo_root, logger=log)
-    if result.returncode != 0:
-        log.error("Push failed: %s", result.stderr.strip())
+    try:
+        run_command_or_fail(
+            ["git", "push", "-u", "origin", branch],
+            error_msg="Push failed",
+            cwd=repo_root,
+            logger=log,
+        )
+    except CommandError:
         return False
-
     return True
 
 
@@ -147,29 +150,27 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
     title = f"Fix #{issue['number']}: {issue['title']}"
     body = _build_pr_body(issue, repo_root)
 
-    log.info("Checking for existing PR for branch %s", branch)
-    existing = run_command(
-        ["gh", "pr", "view", "--repo", repo, branch, "--json", "url", "--jq", ".url"],
-        cwd=repo_root,
-        logger=log,
-    )
-    if existing.returncode == 0 and existing.stdout.strip():
-        pr_url = existing.stdout.strip()
-        log.info("PR already exists: %s", pr_url)
-        return pr_url
-
-    # Non-zero exit from `gh pr view` is the normal "no PR found" case —
-    # stderr from gh is captured but intentionally not logged here to avoid
-    # false-alarm noise on every first-run pipeline execution.
-    log.debug("No existing PR for branch %s (gh pr view exited %d)", branch, existing.returncode)
     log.info("Creating PR for issue #%d", issue["number"])
-    result = run_command(
-        ["gh", "pr", "create", "--repo", repo, "--head", branch, "--title", title, "--body", body],
-        cwd=repo_root,
-        logger=log,
-    )
-    if result.returncode != 0:
-        log.error("PR creation failed: %s", result.stderr.strip())
+    try:
+        result = run_command_or_fail(
+            [
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                repo,
+                "--head",
+                branch,
+                "--title",
+                title,
+                "--body",
+                body,
+            ],
+            error_msg="PR creation failed",
+            cwd=repo_root,
+            logger=log,
+        )
+    except CommandError:
         return None
 
     pr_url = result.stdout.strip()

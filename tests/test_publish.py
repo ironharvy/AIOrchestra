@@ -87,7 +87,7 @@ def test_create_pr_creates_new_when_none_exists(monkeypatch):
     """When no PR exists, _create_pr should create one."""
     new_url = "https://github.com/owner/repo/pull/30"
 
-    def fake_run_command(cmd, cwd=None, logger=None):
+    def fake_run_command(cmd, *, cwd=None, check=False, shell=None, logger=None):
         if "view" in cmd:
             return _make_result(returncode=1, stderr="no pull requests found")
         if "create" in cmd:
@@ -98,6 +98,7 @@ def test_create_pr_creates_new_when_none_exists(monkeypatch):
         return _make_result()
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run_command)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run_command)
 
     result = _create_pr(REPO, BRANCH, ISSUE, REPO_ROOT)
     assert result == new_url
@@ -151,12 +152,14 @@ def test_publish_with_existing_pr_url_skips_creation(monkeypatch):
     """When pr_url is passed, publish pushes but skips PR creation entirely."""
     calls = []
 
-    def fake_run_command(cmd, cwd=None, logger=None):
+    def fake_run_command(cmd, *, cwd=None, check=False, shell=None, logger=None):
         calls.append(cmd)
         if "status" in cmd:
             return _make_result(stdout="M file.py\n")
         if "add" in cmd or "commit" in cmd:
             return _make_result()
+        if "diff" in cmd:
+            return _make_result(stdout=" file.py | 2 +-\n 1 file changed\n")
         if "log" in cmd:
             return _make_result(stdout="abc123 some commit\n")
         if "push" in cmd:
@@ -164,6 +167,7 @@ def test_publish_with_existing_pr_url_skips_creation(monkeypatch):
         return _make_result()
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run_command)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run_command)
 
     result = publish(REPO, BRANCH, ISSUE, REPO_ROOT, pr_url="https://github.com/owner/repo/pull/25")
     assert result == "https://github.com/owner/repo/pull/25"
@@ -175,11 +179,13 @@ def test_publish_without_pr_url_detects_existing(monkeypatch):
     """When no pr_url is passed but a PR exists, publish detects and returns it."""
     existing_url = "https://github.com/owner/repo/pull/25"
 
-    def fake_run_command(cmd, cwd=None, logger=None):
+    def fake_run_command(cmd, *, cwd=None, check=False, shell=None, logger=None):
         if "status" in cmd:
             return _make_result(stdout="M file.py\n")
         if "add" in cmd or "commit" in cmd:
             return _make_result()
+        if "diff" in cmd:
+            return _make_result(stdout=" file.py | 2 +-\n 1 file changed\n")
         if "log" in cmd:
             return _make_result(stdout="abc123 some commit\n")
         if "push" in cmd:
@@ -189,6 +195,7 @@ def test_publish_without_pr_url_detects_existing(monkeypatch):
         return _make_result()
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run_command)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run_command)
 
     result = publish(REPO, BRANCH, ISSUE, REPO_ROOT)
     assert result == existing_url
