@@ -263,6 +263,9 @@ def review(
             ok, feedback = _run_cross_model_review(diff, resolved_cfg, issue, repo_root)
         elif name == "human-required":
             ok, feedback = _check_human_required(tier_cfg, issue)
+        elif name == "static-analysis":
+            log.debug("Tier '%s' handled by validate stage, skipping.", name)
+            continue
         else:
             log.warning("Unknown review tier '%s', skipping.", name)
             continue
