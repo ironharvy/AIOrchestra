@@ -9,7 +9,7 @@ import typing
 import os
 import time
 
-from aiorchestra.ai import agent_family_from_config, build_agent_branch
+from aiorchestra.ai import agent_family_from_config, build_agent_branch, provider_for_agent
 from aiorchestra.config import load_config
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.clarification import request_clarification
@@ -336,6 +336,21 @@ class Pipeline:
 
         log.info("Working in %s", repo_root)
         config = load_config(self.config_path, repo_root=repo_root)
+
+        # Override the AI provider when the pipeline label indicates a
+        # specific agent family (e.g. issue labelled "codex" must use
+        # the codex provider, not the default from config).
+        if self.label:
+            expected_provider = provider_for_agent(self.label)
+            ai_section = config.get("ai", {})
+            if ai_section.get("provider", "claude-code") != expected_provider:
+                log.info(
+                    "Overriding provider %s -> %s (label=%s)",
+                    ai_section.get("provider", "claude-code"),
+                    expected_provider,
+                    self.label,
+                )
+                config.setdefault("ai", {})["provider"] = expected_provider
 
         # Log resolved config at startup.
         ai_cfg = config.get("ai", {})
