@@ -591,14 +591,10 @@ def test_ci_logs_full_output_at_debug(monkeypatch, caplog):
 
 
 def test_clarification_logs_message(monkeypatch, caplog):
-    from aiorchestra.stages import clarification as clar_mod
-    from aiorchestra.stages import labels as labels_mod
-
     def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(clar_mod, "run_command", fake_run)
-    monkeypatch.setattr(labels_mod, "run_command", fake_run)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run)
 
     from aiorchestra.stages.clarification import request_clarification
 

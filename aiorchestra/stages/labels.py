@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import json
 import logging
 
-from aiorchestra.stages._shell import run_command
+from aiorchestra.stages._shell import CommandError, run_command, run_command_or_fail
 
 log = logging.getLogger(__name__)
 
@@ -59,17 +59,13 @@ MANAGED_LABELS: tuple[LabelDef, ...] = (
 
 def add_label(repo: str, issue_number: int, label: str) -> bool:
     """Add *label* to issue *issue_number*. Returns True on success."""
-    result = run_command(
-        ["gh", "issue", "edit", str(issue_number), "--repo", repo, "--add-label", label],
-        logger=log,
-    )
-    if result.returncode != 0:
-        log.error(
-            "Failed to add label '%s' to #%d: %s",
-            label,
-            issue_number,
-            result.stderr.strip(),
+    try:
+        run_command_or_fail(
+            ["gh", "issue", "edit", str(issue_number), "--repo", repo, "--add-label", label],
+            error_msg=f"Failed to add label '{label}' to #{issue_number}",
+            logger=log,
         )
+    except CommandError:
         return False
     log.debug("Added label '%s' to #%d", label, issue_number)
     return True
@@ -77,17 +73,13 @@ def add_label(repo: str, issue_number: int, label: str) -> bool:
 
 def remove_label(repo: str, issue_number: int, label: str) -> bool:
     """Remove *label* from issue *issue_number*. Returns True on success."""
-    result = run_command(
-        ["gh", "issue", "edit", str(issue_number), "--repo", repo, "--remove-label", label],
-        logger=log,
-    )
-    if result.returncode != 0:
-        log.error(
-            "Failed to remove label '%s' from #%d: %s",
-            label,
-            issue_number,
-            result.stderr.strip(),
+    try:
+        run_command_or_fail(
+            ["gh", "issue", "edit", str(issue_number), "--repo", repo, "--remove-label", label],
+            error_msg=f"Failed to remove label '{label}' from #{issue_number}",
+            logger=log,
         )
+    except CommandError:
         return False
     log.debug("Removed label '%s' from #%d", label, issue_number)
     return True

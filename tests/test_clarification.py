@@ -7,8 +7,7 @@ import types
 
 from aiorchestra.ai import InvokeResult, _parse_clarification
 from aiorchestra.pipeline import Pipeline, _DEFERRED
-from aiorchestra.stages.clarification import CLARIFICATION_LABEL
-from aiorchestra.stages.labels import LABEL_WORKING
+from aiorchestra.stages.labels import LABEL_NEEDS_CLARIFICATION, LABEL_WORKING
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +143,7 @@ def test_discover_excludes_needs_clarification_issues(monkeypatch):
                     "body": "",
                     "labels": [
                         {"name": "claude"},
-                        {"name": CLARIFICATION_LABEL},
+                        {"name": LABEL_NEEDS_CLARIFICATION},
                     ],
                     "assignees": [],
                 },
@@ -177,7 +176,7 @@ def test_discover_returns_empty_when_all_need_clarification(monkeypatch):
                     "body": "",
                     "labels": [
                         {"name": "claude"},
-                        {"name": CLARIFICATION_LABEL},
+                        {"name": LABEL_NEEDS_CLARIFICATION},
                     ],
                     "assignees": [],
                 },
@@ -202,8 +201,6 @@ def test_discover_returns_empty_when_all_need_clarification(monkeypatch):
 
 
 def test_request_clarification_posts_comment_and_label(monkeypatch):
-    from aiorchestra.stages import clarification as clar_mod
-    from aiorchestra.stages import labels as labels_mod
     from aiorchestra.stages.clarification import request_clarification
 
     gh_calls = []
@@ -212,8 +209,7 @@ def test_request_clarification_posts_comment_and_label(monkeypatch):
         gh_calls.append(cmd)
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(clar_mod, "run_command", fake_run)
-    monkeypatch.setattr(labels_mod, "run_command", fake_run)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run)
 
     ok = request_clarification(
         "owner/repo",
@@ -232,12 +228,10 @@ def test_request_clarification_posts_comment_and_label(monkeypatch):
 
     # Second call: label
     label_cmd = gh_calls[1]
-    assert CLARIFICATION_LABEL in label_cmd
+    assert LABEL_NEEDS_CLARIFICATION in label_cmd
 
 
 def test_request_clarification_returns_false_on_comment_failure(monkeypatch):
-    from aiorchestra.stages import clarification as clar_mod
-    from aiorchestra.stages import labels as labels_mod
     from aiorchestra.stages.clarification import request_clarification
 
     def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
@@ -245,8 +239,7 @@ def test_request_clarification_returns_false_on_comment_failure(monkeypatch):
             return types.SimpleNamespace(returncode=1, stdout="", stderr="auth error")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(clar_mod, "run_command", fake_run)
-    monkeypatch.setattr(labels_mod, "run_command", fake_run)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run)
 
     ok = request_clarification(
         "owner/repo",
@@ -437,7 +430,7 @@ def test_discover_excludes_agent_working_issues(monkeypatch):
                     "body": "",
                     "labels": [
                         {"name": "claude"},
-                        {"name": CLARIFICATION_LABEL},
+                        {"name": LABEL_NEEDS_CLARIFICATION},
                     ],
                     "assignees": [],
                 },
