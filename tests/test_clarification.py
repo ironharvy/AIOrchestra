@@ -50,6 +50,66 @@ def test_parse_clarification_requires_exact_marker():
     assert result.needs_clarification is False
 
 
+def test_parse_clarification_tolerates_leading_whitespace():
+    # AI might indent the marker (e.g. inside a markdown code block)
+    text = "    NEEDS_CLARIFICATION: Which API version should I target?"
+    result = _parse_clarification(text)
+    assert result.needs_clarification is True
+    assert "API version" in result.clarification_message
+
+
+def test_parse_clarification_multiline_question():
+    text = (
+        "I looked at the issue and found several problems.\n"
+        "NEEDS_CLARIFICATION: The issue mentions both REST and GraphQL.\n"
+        "Which one should I implement?"
+    )
+    result = _parse_clarification(text)
+    assert result.needs_clarification is True
+    assert "REST and GraphQL" in result.clarification_message
+
+
+# ---------------------------------------------------------------------------
+# OllamaProvider: clarification parsing
+# ---------------------------------------------------------------------------
+
+
+def test_ollama_provider_parses_clarification(monkeypatch):
+    """OllamaProvider must route output through _parse_clarification."""
+    import json
+    import urllib.request
+
+    from aiorchestra.ai._ollama import OllamaProvider
+
+    response_body = json.dumps(
+        {"response": "NEEDS_CLARIFICATION: Is this Python 2 or 3?"}
+    ).encode()
+
+    def fake_urlopen(req, timeout=None):
+        class FakeResp:
+            status = 200
+
+            def read(self):
+                return response_body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+        return FakeResp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    provider = OllamaProvider({"endpoint": "http://localhost:11434"})
+    result = provider.run("implement something")
+
+    assert result.needs_clarification is True
+    assert "Python 2 or 3" in result.clarification_message
+    assert result.success is True
+
+
 # ---------------------------------------------------------------------------
 # discover: needs-clarification exclusion
 # ---------------------------------------------------------------------------
@@ -265,6 +325,9 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
     monkeypatch.setattr("aiorchestra.pipeline.remove_label", lambda repo, number, label: True)
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.swap_label", lambda repo, number, remove, add: True
+    )
 
     pipeline = Pipeline(
         repo="owner/repo",
