@@ -2,24 +2,35 @@
 
 from __future__ import annotations
 
+import logging
+
 from aiorchestra.ai._cli import CLIProvider
+
+log = logging.getLogger(__name__)
+
+_SANDBOX_MODES = frozenset({"read-only", "workspace-write", "danger-full-access"})
 
 
 class CodexProvider(CLIProvider):
-    """Invokes the ``codex`` CLI in quiet (non-interactive) mode.
+    """Invokes the ``codex exec`` subcommand for non-interactive execution.
 
-    Codex runs locally like Claude Code.  In ``full-auto`` approval mode it
-    edits files without interactive confirmation (network is disabled by the
-    CLI in this mode).
+    ``codex exec`` replaces the former ``codex --quiet`` interface.
+    In ``--full-auto`` mode the CLI uses *workspace-write* sandboxing and
+    auto-approves tool calls (network is disabled by the CLI in this mode).
     """
 
     _cli_name = "codex"
 
     def _build_command(self, prompt: str) -> list[str]:
-        cmd: list[str] = ["codex", "--quiet"]
+        cmd: list[str] = ["codex", "exec"]
 
         approval = self._config.get("approval_mode", "full-auto")
-        cmd.extend(["--approval-mode", approval])
+        if approval == "full-auto":
+            cmd.append("--full-auto")
+        elif approval in _SANDBOX_MODES:
+            cmd.extend(["--sandbox", approval])
+        else:
+            log.warning("Unknown approval_mode %r — omitting flag", approval)
 
         model = self._config.get("model")
         if model:
