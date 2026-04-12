@@ -345,6 +345,7 @@ def test_review_skips_static_analysis_without_warning(monkeypatch, caplog):
 
     assert ok
     assert feedback is None
+    assert provider.called
     assert "Unknown review tier" not in caplog.text
     assert "handled by validate stage" in caplog.text
 
