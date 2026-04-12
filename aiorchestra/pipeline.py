@@ -10,7 +10,8 @@ import os
 import time
 
 from aiorchestra.ai import agent_family_from_config, build_agent_branch, provider_for_agent
-from aiorchestra.config import load_config
+from aiorchestra.ai._agents import KNOWN_AGENTS
+from aiorchestra.config import _deep_merge, load_config
 from aiorchestra.stages._shell import run_command
 from aiorchestra.stages.clarification import request_clarification
 from aiorchestra.stages.discover import discover_issues
@@ -340,7 +341,7 @@ class Pipeline:
         # Override the AI provider when the pipeline label indicates a
         # specific agent family (e.g. issue labelled "codex" must use
         # the codex provider, not the default from config).
-        if self.label:
+        if self.label and self.label in KNOWN_AGENTS:
             expected_provider = provider_for_agent(self.label)
             ai_section = config.get("ai", {})
             if ai_section.get("provider", "claude-code") != expected_provider:
@@ -350,7 +351,7 @@ class Pipeline:
                     expected_provider,
                     self.label,
                 )
-                config.setdefault("ai", {})["provider"] = expected_provider
+                config = _deep_merge(config, {"ai": {"provider": expected_provider}})
 
         # Log resolved config at startup.
         ai_cfg = config.get("ai", {})
