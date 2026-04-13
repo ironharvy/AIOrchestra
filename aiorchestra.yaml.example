@@ -56,3 +56,13 @@ osint:
     endpoint: "http://localhost:11434"
     model: "mistral"         # any model that fits your GPU (e.g. llama3, phi3)
     timeout: 120
+
+# Langfuse LLM tracing (optional — requires `pip install aiorchestra[observability]`).
+# Captures per-generation prompts, completions, tokens, cost, and latency.
+# Keys can be supplied via LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY env vars
+# (env-var presence implies opt-in; no config toggle needed).
+langfuse:
+  enabled: false
+  public_key: ""
+  secret_key: ""
+  host: "https://cloud.langfuse.com"

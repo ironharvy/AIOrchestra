@@ -7,6 +7,7 @@ import sys
 import time
 from collections.abc import Callable
 
+from aiorchestra._langfuse import init as _init_langfuse
 from aiorchestra._logging import setup_logging
 from aiorchestra.config import load_config
 from aiorchestra.dispatcher import Dispatcher
@@ -159,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         config = load_config(args.config)
+        _init_langfuse(config)
         pipeline = Pipeline(
             repo=args.repo,
             label=args.label or config.get("label", "claude"),
@@ -175,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "dispatch":
         config = load_config(args.config)
+        _init_langfuse(config)
         dispatcher = Dispatcher(
             config=config,
             owner=args.owner,

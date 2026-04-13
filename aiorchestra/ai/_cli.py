@@ -9,11 +9,13 @@ their command.
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import shutil
 import subprocess
 from abc import abstractmethod
 
+from aiorchestra import _langfuse
 from aiorchestra.ai._base import AIProvider, InvokeResult, _parse_clarification
 
 log = logging.getLogger(__name__)
@@ -51,9 +53,24 @@ class CLIProvider(AIProvider):
 
         model = self._config.get("model", "default")
         log.info("Invoking %s CLI (model=%s)...", self._cli_name, model)
+        start_time = _dt.datetime.now(_dt.timezone.utc)
         result = subprocess.run(cmd, **kwargs)
+        end_time = _dt.datetime.now(_dt.timezone.utc)
 
-        if result.returncode != 0:
+        success = result.returncode == 0
+        completion = result.stdout if success else result.stderr
+        _langfuse.record_generation(
+            name=f"{self._cli_name}.run",
+            model=model,
+            provider=self._cli_name,
+            prompt=prompt,
+            completion=completion,
+            start_time=start_time,
+            end_time=end_time,
+            success=success,
+        )
+
+        if not success:
             log.error("%s CLI failed: %s", self._cli_name, result.stderr.strip())
             return InvokeResult(success=False, output=result.stderr)
 

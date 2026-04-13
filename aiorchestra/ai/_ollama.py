@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
 import urllib.error
 import urllib.request
 
+from aiorchestra import _langfuse
 from aiorchestra.ai._base import AIProvider, InvokeResult, _parse_clarification
 
 log = logging.getLogger(__name__)
@@ -56,19 +58,34 @@ class OllamaProvider(AIProvider):
         )
 
         log.info("Invoking Ollama model=%s at %s", self._model, self._endpoint)
+        start_time = _dt.datetime.now(_dt.timezone.utc)
+        response_text = ""
+        success = False
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
                 data = json.loads(resp.read().decode())
+            response_text = data.get("response", "")
+            success = bool(response_text)
         except urllib.error.URLError as exc:
             log.error("Ollama request failed: %s", exc)
-            return InvokeResult(success=False)
         except TimeoutError:
             log.error("Ollama request timed out after %ds", self._timeout)
-            return InvokeResult(success=False)
+        end_time = _dt.datetime.now(_dt.timezone.utc)
 
-        response_text = data.get("response", "")
-        if not response_text:
-            log.warning("Ollama returned empty response")
+        _langfuse.record_generation(
+            name="ollama.run",
+            model=self._model,
+            provider="ollama",
+            prompt=prompt,
+            completion=response_text,
+            start_time=start_time,
+            end_time=end_time,
+            success=success,
+        )
+
+        if not success:
+            if response_text == "":
+                log.warning("Ollama returned empty response")
             return InvokeResult(success=False)
 
         log.debug("Ollama response length: %d chars", len(response_text))

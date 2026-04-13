@@ -90,6 +90,14 @@ DEFAULTS = {
     "watch": {
         "poll_interval": 300,
     },
+    "langfuse": {
+        "enabled": False,
+        # Keys resolved from LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY env
+        # vars first, then these config keys. Host defaults to Langfuse Cloud.
+        "public_key": "",
+        "secret_key": "",
+        "host": "https://cloud.langfuse.com",
+    },
 }
 
 

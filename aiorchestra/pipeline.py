@@ -9,6 +9,7 @@ import logging
 import os
 import time
 
+from aiorchestra import _langfuse
 from aiorchestra.ai import agent_family_from_config, build_agent_branch, provider_for_agent
 from aiorchestra.ai._agents import KNOWN_AGENTS
 from aiorchestra.config import _deep_merge, load_config
@@ -192,19 +193,23 @@ class Pipeline:
             if result == _DEFERRED:
                 log.info("Issue #%d deferred — waiting for clarification", number)
                 remove_label(self.repo, number, LABEL_WORKING)
+                _langfuse.flush()
                 os._exit(0)
 
             if not result:
                 log.error("Failed to process issue #%d", number)
                 swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+                _langfuse.flush()
                 os._exit(1)
 
             swap_label(self.repo, number, LABEL_WORKING, LABEL_AWAITING_REVIEW)
+            _langfuse.flush()
             os._exit(0)
 
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+            _langfuse.flush()
             os._exit(1)
 
     @staticmethod
@@ -268,12 +273,26 @@ class Pipeline:
         if self.review_only:
             return self._process_issue_review_only(issue)
 
+        trace_id = _langfuse.start_trace(
+            name=f"issue-{issue['number']}",
+            metadata={
+                "repo": self.repo,
+                "issue_number": issue["number"],
+                "issue_title": issue.get("title", ""),
+                "provider": self.config.get("ai", {}).get("provider", "claude-code"),
+            },
+            tags=[f"repo:{self.repo}", f"issue:{issue['number']}"],
+        )
+        _langfuse.set_current_trace(trace_id)
+
         timer = StageTimer()
 
         with timer.step("prepare"):
             ctx = self._prepare_issue(issue)
         log.info("[prepare] completed in %s", _fmt_duration(timer._steps["prepare"]))
         if ctx is None:
+            _langfuse.end_trace(trace_id, status="prepare-failed")
+            _langfuse.set_current_trace(None)
             return False
 
         if _branch_has_existing_work(ctx.repo_root):
@@ -285,8 +304,12 @@ class Pipeline:
         with timer.step("impl+validate"):
             loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
         if loop_result == _DEFERRED:
+            _langfuse.end_trace(trace_id, status="deferred")
+            _langfuse.set_current_trace(None)
             return _DEFERRED
         if not loop_result:
+            _langfuse.end_trace(trace_id, status="impl-failed")
+            _langfuse.set_current_trace(None)
             return False
 
         with timer.step("publish"):
@@ -298,16 +321,22 @@ class Pipeline:
             )
         log.info("[publish] completed in %s", _fmt_duration(timer._steps["publish"]))
         if not pr_url:
+            _langfuse.end_trace(trace_id, status="publish-failed")
+            _langfuse.set_current_trace(None)
             return False
 
         with timer.step("ci"):
             pr_url = self._run_ci_fix_loop(ctx, pr_url)
         if not pr_url:
+            _langfuse.end_trace(trace_id, status="ci-failed")
+            _langfuse.set_current_trace(None)
             return False
 
         with timer.step("review"):
             pr_url = self._run_review_fix_loop(ctx, pr_url)
         if not pr_url:
+            _langfuse.end_trace(trace_id, status="review-failed")
+            _langfuse.set_current_trace(None)
             return False
 
         log.info(
@@ -317,6 +346,8 @@ class Pipeline:
             ", ".join(f"{k}: {_fmt_duration(v)}" for k, v in timer._steps.items()),
         )
         log.info("Issue #%d completed successfully.", issue["number"])
+        _langfuse.end_trace(trace_id, status="success")
+        _langfuse.set_current_trace(None)
         return True
 
     def _process_issue_review_only(self, issue: IssueData) -> bool:
