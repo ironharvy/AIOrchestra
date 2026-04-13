@@ -45,6 +45,29 @@ discover → implement → validate → review → publish stages.
 - Tests required for all stages and providers
 - No new runtime dependencies without an ADR in think_tank
 
+## Bug Fix Rules
+
+When a CI check, linter, or test fails, fix the code — never weaken the tool:
+
+1. **Never weaken or disable a linter/formatter rule to fix a violation.**
+   Fix the code to comply with the existing rule. Do not change line-length,
+   disable rules, add `noqa` comments, or alter tool configs.
+2. **Never wrap imports in try/except to hide missing dependencies.**
+   Add the dependency to `pyproject.toml` `[project.dependencies]` (or
+   `[project.optional-dependencies]`) and, if present, `requirements.txt`.
+3. **Never modify CI workflows, test thresholds, semgrep rules, or tool
+   configs to make a failing check pass** unless explicitly asked by a human.
+4. **Prefer the smallest, most targeted fix.** If a one-line change fixes it,
+   don't restructure surrounding code.
+5. **Diagnose before fixing.** When a check fails, first identify *what rule*
+   was violated and *why*, then choose a fix that addresses the root cause.
+   A fix is correct when it satisfies the rule's intent, not just when CI
+   turns green.
+6. **Protected files — changes require human approval:**
+   `pyproject.toml [tool.*]`, `.semgrep/`, `.github/workflows/`,
+   `.ruff.toml`, `setup.cfg`. If a fix seems to require changing these,
+   stop and ask.
+
 ## Quality
 
 Enforced by CI, not by this file:

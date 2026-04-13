@@ -34,9 +34,11 @@ class TestInitWithSdk:
     def test_init_with_dsn_from_config(self):
         _reset()
         mock_sdk = MagicMock()
-        with patch.object(sentry_mod, "_HAS_SDK", True), \
-             patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True), \
-             patch.dict("os.environ", {}, clear=False):
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict("os.environ", {}, clear=False),
+        ):
             sentry_mod.init({"sentry": {"dsn": "https://key@sentry.io/1"}})
 
         assert sentry_mod._initialized is True
@@ -50,9 +52,11 @@ class TestInitWithSdk:
     def test_init_with_dsn_from_env(self):
         _reset()
         mock_sdk = MagicMock()
-        with patch.object(sentry_mod, "_HAS_SDK", True), \
-             patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True), \
-             patch.dict("os.environ", {"SENTRY_DSN": "https://env@sentry.io/2"}):
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict("os.environ", {"SENTRY_DSN": "https://env@sentry.io/2"}),
+        ):
             sentry_mod.init({"sentry": {"dsn": "https://cfg@sentry.io/1"}})
 
         # Env var takes precedence over config.
@@ -63,12 +67,17 @@ class TestInitWithSdk:
     def test_env_overrides_environment(self):
         _reset()
         mock_sdk = MagicMock()
-        with patch.object(sentry_mod, "_HAS_SDK", True), \
-             patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True), \
-             patch.dict("os.environ", {
-                 "SENTRY_DSN": "https://key@sentry.io/1",
-                 "SENTRY_ENVIRONMENT": "staging",
-             }):
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict(
+                "os.environ",
+                {
+                    "SENTRY_DSN": "https://key@sentry.io/1",
+                    "SENTRY_ENVIRONMENT": "staging",
+                },
+            ),
+        ):
             sentry_mod.init({"sentry": {"dsn": "", "environment": "production"}})
 
         call_kwargs = mock_sdk.init.call_args[1]
@@ -77,9 +86,11 @@ class TestInitWithSdk:
     def test_no_init_when_dsn_empty(self):
         _reset()
         mock_sdk = MagicMock()
-        with patch.object(sentry_mod, "_HAS_SDK", True), \
-             patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True), \
-             patch.dict("os.environ", {}, clear=False):
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict("os.environ", {}, clear=False),
+        ):
             sentry_mod.init({"sentry": {"dsn": ""}})
 
         assert sentry_mod._initialized is False
@@ -88,9 +99,11 @@ class TestInitWithSdk:
     def test_no_init_when_sentry_section_missing(self):
         _reset()
         mock_sdk = MagicMock()
-        with patch.object(sentry_mod, "_HAS_SDK", True), \
-             patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True), \
-             patch.dict("os.environ", {}, clear=False):
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict("os.environ", {}, clear=False),
+        ):
             sentry_mod.init({})
 
         assert sentry_mod._initialized is False
@@ -103,9 +116,11 @@ class TestHelpers:
     def _init_mock(self):
         _reset()
         mock_sdk = MagicMock()
-        with patch.object(sentry_mod, "_HAS_SDK", True), \
-             patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True), \
-             patch.dict("os.environ", {}, clear=False):
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict("os.environ", {}, clear=False),
+        ):
             sentry_mod.init({"sentry": {"dsn": "https://key@sentry.io/1"}})
         return mock_sdk
 
@@ -126,7 +141,9 @@ class TestHelpers:
         with patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True):
             sentry_mod.add_breadcrumb(category="stage", message="prepare done")
         mock_sdk.add_breadcrumb.assert_called_once_with(
-            category="stage", message="prepare done", level="info",
+            category="stage",
+            message="prepare done",
+            level="info",
         )
 
     def test_capture_exception(self):

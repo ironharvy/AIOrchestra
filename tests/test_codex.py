@@ -11,7 +11,7 @@ def _make_provider(**overrides):
 
 
 def test_codex_basic_invocation(monkeypatch):
-    """Codex is invoked with --quiet and --approval-mode full-auto by default."""
+    """Codex is invoked via ``exec --full-auto`` by default."""
     captured = {}
 
     def fake_run(cmd, *, capture_output=False, text=False, cwd=None):
@@ -26,9 +26,8 @@ def test_codex_basic_invocation(monkeypatch):
 
     assert result.success
     assert result.output == "done\n"
-    assert captured["cmd"][:2] == ["codex", "--quiet"]
-    assert "--approval-mode" in captured["cmd"]
-    assert "full-auto" in captured["cmd"]
+    assert captured["cmd"][:2] == ["codex", "exec"]
+    assert "--full-auto" in captured["cmd"]
     assert "fix the bug" in captured["cmd"]
     assert captured["cwd"] == "/tmp/repo"
 
@@ -51,8 +50,26 @@ def test_codex_custom_model(monkeypatch):
     assert captured["cmd"][idx + 1] == "o4-mini"
 
 
-def test_codex_custom_approval_mode(monkeypatch):
-    """Approval mode can be overridden."""
+def test_codex_sandbox_approval_mode(monkeypatch):
+    """Sandbox-style approval modes map to --sandbox."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
+
+    provider = _make_provider(approval_mode="workspace-write")
+    provider.run("hello")
+
+    assert "--full-auto" not in captured["cmd"]
+    idx = captured["cmd"].index("--sandbox")
+    assert captured["cmd"][idx + 1] == "workspace-write"
+
+
+def test_codex_unknown_approval_mode(monkeypatch):
+    """Unknown approval modes are omitted with a warning."""
     captured = {}
 
     def fake_run(cmd, **kwargs):
@@ -64,8 +81,8 @@ def test_codex_custom_approval_mode(monkeypatch):
     provider = _make_provider(approval_mode="auto-edit")
     provider.run("hello")
 
-    idx = captured["cmd"].index("--approval-mode")
-    assert captured["cmd"][idx + 1] == "auto-edit"
+    assert "--full-auto" not in captured["cmd"]
+    assert "--sandbox" not in captured["cmd"]
 
 
 def test_codex_failure(monkeypatch):

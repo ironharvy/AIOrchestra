@@ -4,15 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from collections.abc import Callable
 import logging
-import typing
 import os
 import time
 
-from aiorchestra._sentry import add_breadcrumb, capture_exception, set_context, set_tag
-from aiorchestra.ai import agent_family_from_config, build_agent_branch
-from aiorchestra.config import load_config
-from aiorchestra.stages._shell import run_command
+from aiorchestra._sentry import (
+    add_breadcrumb,
+    capture_exception,
+    flush as _sentry_flush,
+    set_context,
+    set_tag,
+)
+from aiorchestra.ai import agent_family_from_config, build_agent_branch, provider_for_agent
+from aiorchestra.ai._agents import KNOWN_AGENTS
+from aiorchestra.config import _deep_merge, load_config
+from aiorchestra.stages._shell import StageTimer, has_diff_from_main, run_command
 from aiorchestra.stages.clarification import request_clarification
 from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.osint import enrich_issue
@@ -60,12 +67,7 @@ def _has_changes(repo_root: str) -> bool:
 
 def _branch_has_existing_work(repo_root: str) -> bool:
     """Return True if the current branch has commits ahead of origin/main."""
-    result = run_command(
-        ["git", "diff", "--stat", "origin/main...HEAD"],
-        cwd=repo_root,
-        logger=log,
-    )
-    return bool(result.stdout.strip())
+    return has_diff_from_main(repo_root)
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,7 @@ class Pipeline:
         dry_run: bool = False,
         workspace: str | None = None,
         parallel: bool = True,
+        review_only: bool = False,
     ):
         self.repo = repo
         self.label = label
@@ -102,6 +105,7 @@ class Pipeline:
         self.dry_run = dry_run
         self.workspace = workspace
         self.parallel = parallel
+        self.review_only = review_only
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -195,20 +199,24 @@ class Pipeline:
             if result == _DEFERRED:
                 log.info("Issue #%d deferred — waiting for clarification", number)
                 remove_label(self.repo, number, LABEL_WORKING)
+                _sentry_flush()
                 os._exit(0)
 
             if not result:
                 log.error("Failed to process issue #%d", number)
                 swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+                _sentry_flush()
                 os._exit(1)
 
             swap_label(self.repo, number, LABEL_WORKING, LABEL_AWAITING_REVIEW)
+            _sentry_flush()
             os._exit(0)
 
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
             capture_exception()
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+            _sentry_flush()
             os._exit(1)
 
     @staticmethod
@@ -270,24 +278,34 @@ class Pipeline:
     def _process_issue(self, issue: IssueData) -> bool | str:
         """Process a single issue. Returns True on success, False on failure,
         or ``_DEFERRED`` when the issue needs human clarification."""
-        issue_start = time.monotonic()
+        if self.review_only:
+            return self._process_issue_review_only(issue)
 
         set_tag("repo", self.repo)
         set_tag("issue", str(issue["number"]))
         set_tag("provider", self.config.get("ai", {}).get("provider", "claude-code"))
-        set_context("issue", {
-            "number": issue["number"],
-            "title": issue.get("title", ""),
-            "repo": self.repo,
-        })
+        set_context(
+            "issue",
+            {
+                "number": issue["number"],
+                "title": issue.get("title", ""),
+                "repo": self.repo,
+            },
+        )
+        add_breadcrumb(
+            category="pipeline",
+            message=f"Start processing issue #{issue['number']}",
+        )
 
-        add_breadcrumb(category="pipeline", message=f"Start processing issue #{issue['number']}")
+        timer = StageTimer()
 
-        t0 = time.monotonic()
-        ctx = self._prepare_issue(issue)
-        prepare_elapsed = time.monotonic() - t0
-        log.info("[prepare] completed in %s", _fmt_duration(prepare_elapsed))
-        add_breadcrumb(category="stage", message=f"prepare completed in {_fmt_duration(prepare_elapsed)}")
+        with timer.step("prepare"):
+            ctx = self._prepare_issue(issue)
+        log.info("[prepare] completed in %s", _fmt_duration(timer._steps["prepare"]))
+        add_breadcrumb(
+            category="stage",
+            message=f"prepare completed in {_fmt_duration(timer._steps['prepare'])}",
+        )
         if ctx is None:
             return False
 
@@ -297,12 +315,11 @@ class Pipeline:
         else:
             initial_prompt = "implement"
 
-        t0 = time.monotonic()
-        loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
-        impl_elapsed = time.monotonic() - t0
+        with timer.step("impl+validate"):
+            loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
         add_breadcrumb(
             category="stage",
-            message=f"implement+validate completed in {_fmt_duration(impl_elapsed)}",
+            message=f"impl+validate completed in {_fmt_duration(timer._steps['impl+validate'])}",
             level="info" if loop_result else "error",
         )
         if loop_result == _DEFERRED:
@@ -310,58 +327,109 @@ class Pipeline:
         if not loop_result:
             return False
 
-        t0 = time.monotonic()
-        pr_url = publish(
-            ctx.repo,
-            ctx.branch,
-            ctx.issue,
-            repo_root=ctx.repo_root,
-        )
-        publish_elapsed = time.monotonic() - t0
-        log.info("[publish] completed in %s", _fmt_duration(publish_elapsed))
+        with timer.step("publish"):
+            pr_url = publish(
+                ctx.repo,
+                ctx.branch,
+                ctx.issue,
+                repo_root=ctx.repo_root,
+            )
+        log.info("[publish] completed in %s", _fmt_duration(timer._steps["publish"]))
         add_breadcrumb(
             category="stage",
-            message=f"publish completed in {_fmt_duration(publish_elapsed)}",
+            message=f"publish completed in {_fmt_duration(timer._steps['publish'])}",
             level="info" if pr_url else "error",
         )
         if not pr_url:
             return False
 
-        t0 = time.monotonic()
-        pr_url = self._run_ci_fix_loop(ctx, pr_url)
-        ci_elapsed = time.monotonic() - t0
+        with timer.step("ci"):
+            pr_url = self._run_ci_fix_loop(ctx, pr_url)
         add_breadcrumb(
             category="stage",
-            message=f"ci completed in {_fmt_duration(ci_elapsed)}",
+            message=f"ci completed in {_fmt_duration(timer._steps['ci'])}",
             level="info" if pr_url else "error",
         )
         if not pr_url:
             return False
 
-        t0 = time.monotonic()
-        pr_url = self._run_review_fix_loop(ctx, pr_url)
-        review_elapsed = time.monotonic() - t0
+        with timer.step("review"):
+            pr_url = self._run_review_fix_loop(ctx, pr_url)
         add_breadcrumb(
             category="stage",
-            message=f"review completed in {_fmt_duration(review_elapsed)}",
+            message=f"review completed in {_fmt_duration(timer._steps['review'])}",
             level="info" if pr_url else "error",
         )
         if not pr_url:
             return False
 
-        total_elapsed = time.monotonic() - issue_start
         log.info(
-            "Issue #%d total: %s (prepare: %s, impl+validate: %s, publish: %s, ci: %s, review: %s)",
+            "Issue #%d total: %s (%s)",
             issue["number"],
-            _fmt_duration(total_elapsed),
-            _fmt_duration(prepare_elapsed),
-            _fmt_duration(impl_elapsed),
-            _fmt_duration(publish_elapsed),
-            _fmt_duration(ci_elapsed),
-            _fmt_duration(review_elapsed),
+            _fmt_duration(timer.total),
+            ", ".join(f"{k}: {_fmt_duration(v)}" for k, v in timer._steps.items()),
         )
         log.info("Issue #%d completed successfully.", issue["number"])
         return True
+
+    def _process_issue_review_only(self, issue: IssueData) -> bool:
+        """Review-only mode: validate and review existing work without implementing.
+
+        Skips implementation, publishing, and CI — just runs validation and
+        the review tiers on whatever code is already on the branch.
+        """
+        issue_start = time.monotonic()
+        log.info("Review-only mode for issue #%d", issue["number"])
+
+        t0 = time.monotonic()
+        ctx = self._prepare_issue(issue)
+        prepare_elapsed = time.monotonic() - t0
+        log.info("[prepare] completed in %s", _fmt_duration(prepare_elapsed))
+        if ctx is None:
+            return False
+
+        if not _branch_has_existing_work(ctx.repo_root):
+            log.error("Review-only mode requires existing work on the branch")
+            return False
+
+        passed = True
+
+        # Run validation (tests, lint, static analysis).
+        t0 = time.monotonic()
+        val_ok, val_feedback = validate(ctx.config, repo_root=ctx.repo_root)
+        validate_elapsed = time.monotonic() - t0
+        log.info("[validate] completed in %s", _fmt_duration(validate_elapsed))
+        if not val_ok:
+            log.warning("Validation failed: %.500s", val_feedback)
+            passed = False
+
+        # Run review tiers.
+        t0 = time.monotonic()
+        rev_ok, rev_feedback = review(
+            ctx.repo,
+            ctx.branch,
+            ctx.config,
+            issue=ctx.issue,
+            repo_root=ctx.repo_root,
+        )
+        review_elapsed = time.monotonic() - t0
+        log.info("[review] completed in %s", _fmt_duration(review_elapsed))
+        if not rev_ok:
+            log.warning("Review failed: %.500s", rev_feedback)
+            passed = False
+
+        total_elapsed = time.monotonic() - issue_start
+        status = "PASSED" if passed else "FAILED"
+        log.info(
+            "Review-only #%d %s — total: %s (prepare: %s, validate: %s, review: %s)",
+            issue["number"],
+            status,
+            _fmt_duration(total_elapsed),
+            _fmt_duration(prepare_elapsed),
+            _fmt_duration(validate_elapsed),
+            _fmt_duration(review_elapsed),
+        )
+        return passed
 
     def _prepare_issue(self, issue: IssueData) -> _IssueContext | None:
         branch = build_agent_branch(self.config, issue["number"])
@@ -371,6 +439,21 @@ class Pipeline:
 
         log.info("Working in %s", repo_root)
         config = load_config(self.config_path, repo_root=repo_root)
+
+        # Override the AI provider when the pipeline label indicates a
+        # specific agent family (e.g. issue labelled "codex" must use
+        # the codex provider, not the default from config).
+        if self.label and self.label in KNOWN_AGENTS:
+            expected_provider = provider_for_agent(self.label)
+            ai_section = config.get("ai", {})
+            if ai_section.get("provider", "claude-code") != expected_provider:
+                log.info(
+                    "Overriding provider %s -> %s (label=%s)",
+                    ai_section.get("provider", "claude-code"),
+                    expected_provider,
+                    self.label,
+                )
+                config = _deep_merge(config, {"ai": {"provider": expected_provider}})
 
         # Log resolved config at startup.
         ai_cfg = config.get("ai", {})
@@ -492,7 +575,7 @@ class Pipeline:
         stage_name: str,
         prompt_name: str,
         check_fn: RemoteCheckFn,
-        post_publish_fn: typing.Callable[[str], str | None] | None = None,
+        post_publish_fn: Callable[[str], str | None] | None = None,
     ) -> str | None:
         for attempt in range(1, ctx.max_retries + 1):
             ok, feedback = check_fn(pr_url)

@@ -36,22 +36,26 @@ class Dispatcher:
 
         for repo, issues in repo_issues.items():
             log.info("Dispatching %d issue(s) for %s", len(issues), repo)
+
+            # Group issues by resolved agent so each pipeline uses the
+            # correct provider for its issues.
+            by_agent: dict[str, list] = {}
             for issue in issues:
                 agent = resolve_agent(issue.get("labels", []))
                 log.info("  #%d -> %s", issue["number"], agent)
+                by_agent.setdefault(agent, []).append(issue)
 
-            label = resolve_agent(issues[0].get("labels", []))
-
-            pipeline = Pipeline(
-                repo=repo,
-                label=label,
-                config=self.config,
-                config_path=self.config_path,
-                dry_run=self.dry_run,
-                workspace=self.workspace,
-            )
-            result = pipeline.run(issues=issues)
-            if result != 0:
-                return result
+            for label, agent_issues in by_agent.items():
+                pipeline = Pipeline(
+                    repo=repo,
+                    label=label,
+                    config=self.config,
+                    config_path=self.config_path,
+                    dry_run=self.dry_run,
+                    workspace=self.workspace,
+                )
+                result = pipeline.run(issues=agent_issues)
+                if result != 0:
+                    return result
 
         return 0

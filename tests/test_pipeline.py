@@ -735,6 +735,141 @@ def test_review_fix_ci_failure_fails_issue(monkeypatch, tmp_path):
     assert pipeline._process_issue({"number": 39, "title": "CI unfixable"}) is False
 
 
+# ---------------------------------------------------------------------------
+# Review-only mode tests
+# ---------------------------------------------------------------------------
+
+
+def test_review_only_skips_implement_and_publish(monkeypatch, tmp_path):
+    """Review-only mode runs validate + review but never calls implement or publish."""
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": True},
+            "review": {"enabled": True},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    def fake_implement(
+        issue,
+        config,
+        prompt_name="implement",
+        error_text=None,
+        repo_root=None,
+        osint_context="",
+        repo=None,
+    ):
+        calls.append("implement")
+        return InvokeResult(success=True)
+
+    def fake_validate(config, repo_root=None):
+        calls.append("validate")
+        return True, None
+
+    def fake_review(repo, branch, config, issue=None, repo_root=None):
+        calls.append("review")
+        return True, None
+
+    def fake_publish(repo, branch, issue, repo_root, pr_url=None):
+        calls.append("publish")
+        return "https://example.test/pr/1"
+
+    monkeypatch.setattr("aiorchestra.pipeline.implement", fake_implement)
+    monkeypatch.setattr("aiorchestra.pipeline.validate", fake_validate)
+    monkeypatch.setattr("aiorchestra.pipeline.review", fake_review)
+    monkeypatch.setattr("aiorchestra.pipeline.publish", fake_publish)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        review_only=True,
+    )
+
+    assert pipeline._process_issue({"number": 30, "title": "Review my code"}) is True
+    assert calls == ["validate", "review"]
+
+
+def test_review_only_fails_when_no_existing_work(monkeypatch, tmp_path):
+    """Review-only mode should fail if the branch has no commits ahead of main."""
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": True},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: False)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        review_only=True,
+    )
+
+    assert pipeline._process_issue({"number": 31, "title": "Empty branch"}) is False
+
+
+def test_review_only_reports_validation_failure(monkeypatch, tmp_path):
+    """Review-only mode should still run review even if validation fails,
+    and return False overall."""
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": True},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._branch_has_existing_work", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+
+    def fake_validate(config, repo_root=None):
+        calls.append("validate")
+        return False, "lint errors found"
+
+    def fake_review(repo, branch, config, issue=None, repo_root=None):
+        calls.append("review")
+        return True, None
+
+    monkeypatch.setattr("aiorchestra.pipeline.validate", fake_validate)
+    monkeypatch.setattr("aiorchestra.pipeline.review", fake_review)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label="claude",
+        config={"ai": {"provider": "claude-code"}},
+        review_only=True,
+    )
+
+    result = pipeline._process_issue({"number": 32, "title": "Lint fail"})
+    assert result is False
+    # Both stages ran despite validation failure
+    assert calls == ["validate", "review"]
+
+
 def test_prepare_fails_on_low_disk_space(monkeypatch, tmp_path):
     """Preparation must refuse to proceed when disk space is too low."""
     from aiorchestra.stages import prepare as prep_mod

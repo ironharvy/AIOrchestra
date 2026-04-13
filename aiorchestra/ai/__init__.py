@@ -11,6 +11,7 @@ from aiorchestra.ai._agents import (
     agent_family_from_config,
     build_agent_branch,
     normalize_agent_family,
+    provider_for_agent,
     resolve_agent,
 )
 from aiorchestra.ai._base import AIProvider, InvokeResult, _parse_clarification
@@ -40,5 +41,6 @@ __all__ = [
     "build_agent_branch",
     "create_provider",
     "normalize_agent_family",
+    "provider_for_agent",
     "resolve_agent",
 ]

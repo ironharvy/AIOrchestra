@@ -7,8 +7,7 @@ import types
 
 from aiorchestra.ai import InvokeResult, _parse_clarification
 from aiorchestra.pipeline import Pipeline, _DEFERRED
-from aiorchestra.stages.clarification import CLARIFICATION_LABEL
-from aiorchestra.stages.labels import LABEL_WORKING
+from aiorchestra.stages.labels import LABEL_NEEDS_CLARIFICATION, LABEL_WORKING
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +49,64 @@ def test_parse_clarification_requires_exact_marker():
     assert result.needs_clarification is False
 
 
+def test_parse_clarification_tolerates_leading_whitespace():
+    # AI might indent the marker (e.g. inside a markdown code block)
+    text = "    NEEDS_CLARIFICATION: Which API version should I target?"
+    result = _parse_clarification(text)
+    assert result.needs_clarification is True
+    assert "API version" in result.clarification_message
+
+
+def test_parse_clarification_multiline_question():
+    text = (
+        "I looked at the issue and found several problems.\n"
+        "NEEDS_CLARIFICATION: The issue mentions both REST and GraphQL.\n"
+        "Which one should I implement?"
+    )
+    result = _parse_clarification(text)
+    assert result.needs_clarification is True
+    assert "REST and GraphQL" in result.clarification_message
+
+
+# ---------------------------------------------------------------------------
+# OllamaProvider: clarification parsing
+# ---------------------------------------------------------------------------
+
+
+def test_ollama_provider_parses_clarification(monkeypatch):
+    """OllamaProvider must route output through _parse_clarification."""
+    import json
+    import urllib.request
+
+    from aiorchestra.ai._ollama import OllamaProvider
+
+    response_body = json.dumps({"response": "NEEDS_CLARIFICATION: Is this Python 2 or 3?"}).encode()
+
+    def fake_urlopen(req, timeout=None):
+        class FakeResp:
+            status = 200
+
+            def read(self):
+                return response_body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+        return FakeResp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    provider = OllamaProvider({"endpoint": "http://localhost:11434"})
+    result = provider.run("implement something")
+
+    assert result.needs_clarification is True
+    assert "Python 2 or 3" in result.clarification_message
+    assert result.success is True
+
+
 # ---------------------------------------------------------------------------
 # discover: needs-clarification exclusion
 # ---------------------------------------------------------------------------
@@ -84,7 +141,7 @@ def test_discover_excludes_needs_clarification_issues(monkeypatch):
                     "body": "",
                     "labels": [
                         {"name": "claude"},
-                        {"name": CLARIFICATION_LABEL},
+                        {"name": LABEL_NEEDS_CLARIFICATION},
                     ],
                     "assignees": [],
                 },
@@ -117,7 +174,7 @@ def test_discover_returns_empty_when_all_need_clarification(monkeypatch):
                     "body": "",
                     "labels": [
                         {"name": "claude"},
-                        {"name": CLARIFICATION_LABEL},
+                        {"name": LABEL_NEEDS_CLARIFICATION},
                     ],
                     "assignees": [],
                 },
@@ -142,8 +199,6 @@ def test_discover_returns_empty_when_all_need_clarification(monkeypatch):
 
 
 def test_request_clarification_posts_comment_and_label(monkeypatch):
-    from aiorchestra.stages import clarification as clar_mod
-    from aiorchestra.stages import labels as labels_mod
     from aiorchestra.stages.clarification import request_clarification
 
     gh_calls = []
@@ -152,8 +207,7 @@ def test_request_clarification_posts_comment_and_label(monkeypatch):
         gh_calls.append(cmd)
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(clar_mod, "run_command", fake_run)
-    monkeypatch.setattr(labels_mod, "run_command", fake_run)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run)
 
     ok = request_clarification(
         "owner/repo",
@@ -172,12 +226,10 @@ def test_request_clarification_posts_comment_and_label(monkeypatch):
 
     # Second call: label
     label_cmd = gh_calls[1]
-    assert CLARIFICATION_LABEL in label_cmd
+    assert LABEL_NEEDS_CLARIFICATION in label_cmd
 
 
 def test_request_clarification_returns_false_on_comment_failure(monkeypatch):
-    from aiorchestra.stages import clarification as clar_mod
-    from aiorchestra.stages import labels as labels_mod
     from aiorchestra.stages.clarification import request_clarification
 
     def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
@@ -185,8 +237,7 @@ def test_request_clarification_returns_false_on_comment_failure(monkeypatch):
             return types.SimpleNamespace(returncode=1, stdout="", stderr="auth error")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(clar_mod, "run_command", fake_run)
-    monkeypatch.setattr(labels_mod, "run_command", fake_run)
+    monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run)
 
     ok = request_clarification(
         "owner/repo",
@@ -265,6 +316,7 @@ def test_pipeline_defers_issue_on_clarification(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("aiorchestra.pipeline.add_label", lambda repo, number, label: True)
     monkeypatch.setattr("aiorchestra.pipeline.remove_label", lambda repo, number, label: True)
+    monkeypatch.setattr("aiorchestra.pipeline.swap_label", lambda repo, number, remove, add: True)
 
     pipeline = Pipeline(
         repo="owner/repo",
@@ -374,7 +426,7 @@ def test_discover_excludes_agent_working_issues(monkeypatch):
                     "body": "",
                     "labels": [
                         {"name": "claude"},
-                        {"name": CLARIFICATION_LABEL},
+                        {"name": LABEL_NEEDS_CLARIFICATION},
                     ],
                     "assignees": [],
                 },
