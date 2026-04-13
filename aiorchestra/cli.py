@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     run.add_argument(
+        "--review-only",
+        action="store_true",
+        help="Skip implementation — only validate and review existing work on the branch",
+    )
+    run.add_argument(
         "--verbose",
         "-v",
         action="count",
@@ -162,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             config_path=args.config,
             dry_run=args.dry_run,
             workspace=args.workspace,
+            review_only=args.review_only,
         )
         if args.watch:
             return _watch_loop(pipeline.run, _resolve_poll_interval(args, config))
