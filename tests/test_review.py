@@ -312,6 +312,44 @@ def test_review_skips_disabled_tiers(monkeypatch):
     assert not provider.called
 
 
+def test_review_skips_static_analysis_without_warning(monkeypatch, caplog):
+    """static-analysis is handled by validate, so review should skip it silently."""
+    monkeypatch.setattr(
+        rev_mod,
+        "run_command",
+        lambda cmd, cwd=None, logger=None: types.SimpleNamespace(
+            returncode=0, stdout=DIFF, stderr=""
+        ),
+    )
+
+    provider = _patch_provider(monkeypatch, output="LGTM")
+    monkeypatch.setattr(
+        rev_mod,
+        "render_template",
+        lambda name, **kw: "template",
+    )
+
+    config = {
+        "review": {
+            "tiers": [
+                {"name": "static-analysis", "enabled": True, "commands": ["semgrep"]},
+                {"name": "ai-review", "enabled": True, "provider": "claude-code"},
+            ]
+        }
+    }
+
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="aiorchestra.stages.review"):
+        ok, feedback = review("owner/repo", "branch", config, issue=ISSUE)
+
+    assert ok
+    assert feedback is None
+    assert provider.called
+    assert "Unknown review tier" not in caplog.text
+    assert "handled by validate stage" in caplog.text
+
+
 def test_review_falls_back_to_legacy_when_no_tiers(monkeypatch):
     """When no tiers are configured, falls back to single AI review."""
     monkeypatch.setattr(

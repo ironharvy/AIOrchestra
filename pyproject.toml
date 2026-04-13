@@ -21,6 +21,9 @@ dev = [
 [project.scripts]
 aiorchestra = "aiorchestra.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["aiorchestra*"]
+
 [tool.ruff]
 line-length = 100
 
