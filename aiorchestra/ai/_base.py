@@ -15,7 +15,7 @@ from dataclasses import dataclass
 log = logging.getLogger(__name__)
 
 _CLARIFICATION_RE = re.compile(
-    r"^NEEDS_CLARIFICATION:\s*(.+)",
+    r"^\s*NEEDS_CLARIFICATION:\s*(.+)",
     re.MULTILINE | re.DOTALL,
 )
 

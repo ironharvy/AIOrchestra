@@ -12,11 +12,10 @@ T0 (lint/tests) and T1 (static analysis) run earlier in the validate stage.
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
 from aiorchestra.ai import create_provider, normalize_agent_family
-from aiorchestra.stages._shell import run_command
+from aiorchestra.stages._shell import StageTimer, run_command
 from aiorchestra.stages.types import FeedbackResult, IssueData, PipelineConfig
 from aiorchestra.templates import render_template
 
@@ -229,20 +228,13 @@ def review(
         log.warning("No diff to review.")
         return True, None
 
-    review_start = time.monotonic()
-    tier_durations: dict[str, float] = {}
+    timer = StageTimer()
 
     # If no tiers configured, fall back to legacy behaviour (single AI review)
     if not tiers:
-        t0 = time.monotonic()
-        result = _run_ai_review(diff, config, review_cfg, issue, repo_root)
-        tier_durations["ai-review"] = time.monotonic() - t0
-        elapsed = time.monotonic() - review_start
-        log.info(
-            "[review] completed in %.1fs (ai-review: %.1fs)",
-            elapsed,
-            tier_durations["ai-review"],
-        )
+        with timer.step("ai-review"):
+            result = _run_ai_review(diff, config, review_cfg, issue, repo_root)
+        log.info("[review] completed in %.1fs (%s)", timer.total, timer.summary())
         return result
 
     impl_provider = config.get("ai", {}).get("provider", "claude-code")
@@ -254,31 +246,28 @@ def review(
             continue
 
         log.info("Running review tier: %s", name)
-        t0 = time.monotonic()
 
-        if name == "ai-review":
-            ok, feedback = _run_ai_review(diff, config, tier_cfg, issue, repo_root)
-        elif name in ("cross-model-review", "cross-agent-review"):
-            resolved_cfg = _resolve_cross_review_tier(tier_cfg, impl_provider, repo)
-            ok, feedback = _run_cross_model_review(diff, resolved_cfg, issue, repo_root)
-        elif name == "human-required":
-            ok, feedback = _check_human_required(tier_cfg, issue)
-        else:
-            log.warning("Unknown review tier '%s', skipping.", name)
-            continue
-
-        tier_durations[name] = time.monotonic() - t0
+        with timer.step(name):
+            if name == "ai-review":
+                ok, feedback = _run_ai_review(diff, config, tier_cfg, issue, repo_root)
+            elif name in ("cross-model-review", "cross-agent-review"):
+                resolved_cfg = _resolve_cross_review_tier(tier_cfg, impl_provider, repo)
+                ok, feedback = _run_cross_model_review(diff, resolved_cfg, issue, repo_root)
+            elif name == "human-required":
+                ok, feedback = _check_human_required(tier_cfg, issue)
+            elif name == "static-analysis":
+                log.debug("Tier '%s' handled by validate stage, skipping.", name)
+                continue
+            else:
+                log.warning("Unknown review tier '%s', skipping.", name)
+                continue
 
         if not ok:
             log.info("Review tier '%s' failed — stopping.", name)
-            elapsed = time.monotonic() - review_start
-            tier_summary = ", ".join(f"{k}: {v:.1f}s" for k, v in tier_durations.items())
-            log.info("[review] completed in %.1fs (%s)", elapsed, tier_summary)
+            log.info("[review] completed in %.1fs (%s)", timer.total, timer.summary())
             return False, feedback
 
-    elapsed = time.monotonic() - review_start
-    tier_summary = ", ".join(f"{k}: {v:.1f}s" for k, v in tier_durations.items())
-    log.info("[review] completed in %.1fs (%s)", elapsed, tier_summary)
+    log.info("[review] completed in %.1fs (%s)", timer.total, timer.summary())
     log.info("All review tiers passed.")
     return True, None
 

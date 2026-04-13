@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from aiorchestra._logging import setup_logging
 from aiorchestra.config import load_config

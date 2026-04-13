@@ -36,6 +36,43 @@ jobs:
         continue-on-error: true
         run: pip install semgrep && semgrep scan --config auto --error aiorchestra/
 
+  config-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for protected config changes
+        run: |
+          PROTECTED_PATTERNS=(
+            "pyproject.toml"
+            ".semgrep/"
+            ".github/workflows/"
+            ".ruff.toml"
+            "setup.cfg"
+          )
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
+          FLAGGED=""
+          for pattern in "${PROTECTED_PATTERNS[@]}"; do
+            MATCHES=$(echo "$CHANGED" | grep "^${pattern}" || true)
+            if [ -n "$MATCHES" ]; then
+              FLAGGED="${FLAGGED}${MATCHES}"$'\n'
+            fi
+          done
+          if [ -n "$FLAGGED" ]; then
+            echo "::warning::Protected config files were modified in this PR:"
+            echo "$FLAGGED"
+            echo ""
+            echo "If this PR is an automated bug fix, these changes likely"
+            echo "indicate a shortcut (e.g. weakening a linter rule instead"
+            echo "of fixing the code). Please review carefully."
+            # To make this a hard gate, uncomment the next line:
+            # exit 1
+          fi
+
   test:
     runs-on: ubuntu-latest
     steps:

@@ -6,6 +6,15 @@ from typing import Any
 DEFAULT_AGENT_FAMILY = "claude"
 KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "gemini", "jules", "opencode")
 
+# Maps agent family names to the provider id used by the registry.
+_FAMILY_TO_PROVIDER: dict[str, str] = {
+    "claude": "claude-code",
+    "codex": "codex",
+    "gemini": "gemini",
+    "jules": "jules",
+    "opencode": "opencode",
+}
+
 
 def normalize_agent_family(value: str | None) -> str:
     """Collapse provider ids like ``claude-code`` into ``claude``."""
@@ -26,6 +35,11 @@ def normalize_agent_family(value: str | None) -> str:
             break
 
     return normalized or DEFAULT_AGENT_FAMILY
+
+
+def provider_for_agent(family: str) -> str:
+    """Return the provider id for a given agent *family* name."""
+    return _FAMILY_TO_PROVIDER.get(family, family)
 
 
 def agent_family_from_config(config: Mapping[str, Any]) -> str:

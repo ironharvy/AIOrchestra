@@ -8,14 +8,11 @@ from __future__ import annotations
 
 import logging
 
-from aiorchestra.stages._shell import run_command
+from aiorchestra.stages._shell import CommandError, run_command_or_fail
 from aiorchestra.stages.labels import LABEL_NEEDS_CLARIFICATION, add_label
 from aiorchestra.stages.types import IssueData
 
 log = logging.getLogger(__name__)
-
-# Re-export for backwards compat with tests that import from here.
-CLARIFICATION_LABEL = LABEL_NEEDS_CLARIFICATION
 
 
 def request_clarification(
@@ -50,11 +47,12 @@ def request_clarification(
 
 
 def _add_comment(repo: str, number: int, body: str) -> bool:
-    result = run_command(
-        ["gh", "issue", "comment", str(number), "--repo", repo, "--body", body],
-        logger=log,
-    )
-    if result.returncode != 0:
-        log.error("Failed to comment on issue #%d: %s", number, result.stderr.strip())
+    try:
+        run_command_or_fail(
+            ["gh", "issue", "comment", str(number), "--repo", repo, "--body", body],
+            error_msg=f"Failed to comment on issue #{number}",
+            logger=log,
+        )
+    except CommandError:
         return False
     return True
