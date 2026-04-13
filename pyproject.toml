@@ -12,6 +12,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+sentry = [
+    "sentry-sdk>=2.0",
+]
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",

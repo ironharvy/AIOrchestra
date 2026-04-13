@@ -9,6 +9,13 @@ import logging
 import os
 import time
 
+from aiorchestra._sentry import (
+    add_breadcrumb,
+    capture_exception,
+    flush as _sentry_flush,
+    set_context,
+    set_tag,
+)
 from aiorchestra.ai import agent_family_from_config, build_agent_branch, provider_for_agent
 from aiorchestra.ai._agents import KNOWN_AGENTS
 from aiorchestra.config import _deep_merge, load_config
@@ -192,19 +199,24 @@ class Pipeline:
             if result == _DEFERRED:
                 log.info("Issue #%d deferred — waiting for clarification", number)
                 remove_label(self.repo, number, LABEL_WORKING)
+                _sentry_flush()
                 os._exit(0)
 
             if not result:
                 log.error("Failed to process issue #%d", number)
                 swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+                _sentry_flush()
                 os._exit(1)
 
             swap_label(self.repo, number, LABEL_WORKING, LABEL_AWAITING_REVIEW)
+            _sentry_flush()
             os._exit(0)
 
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
+            capture_exception()
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
+            _sentry_flush()
             os._exit(1)
 
     @staticmethod
@@ -247,6 +259,7 @@ class Pipeline:
             result = self._process_issue(issue)
         except Exception:
             log.exception("Unhandled error processing issue #%d", number)
+            capture_exception()
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
             return False
 
@@ -268,11 +281,31 @@ class Pipeline:
         if self.review_only:
             return self._process_issue_review_only(issue)
 
+        set_tag("repo", self.repo)
+        set_tag("issue", str(issue["number"]))
+        set_tag("provider", self.config.get("ai", {}).get("provider", "claude-code"))
+        set_context(
+            "issue",
+            {
+                "number": issue["number"],
+                "title": issue.get("title", ""),
+                "repo": self.repo,
+            },
+        )
+        add_breadcrumb(
+            category="pipeline",
+            message=f"Start processing issue #{issue['number']}",
+        )
+
         timer = StageTimer()
 
         with timer.step("prepare"):
             ctx = self._prepare_issue(issue)
         log.info("[prepare] completed in %s", _fmt_duration(timer._steps["prepare"]))
+        add_breadcrumb(
+            category="stage",
+            message=f"prepare completed in {_fmt_duration(timer._steps['prepare'])}",
+        )
         if ctx is None:
             return False
 
@@ -284,6 +317,11 @@ class Pipeline:
 
         with timer.step("impl+validate"):
             loop_result = self._run_validation_loop(ctx, prompt_name=initial_prompt)
+        add_breadcrumb(
+            category="stage",
+            message=f"impl+validate completed in {_fmt_duration(timer._steps['impl+validate'])}",
+            level="info" if loop_result else "error",
+        )
         if loop_result == _DEFERRED:
             return _DEFERRED
         if not loop_result:
@@ -297,16 +335,31 @@ class Pipeline:
                 repo_root=ctx.repo_root,
             )
         log.info("[publish] completed in %s", _fmt_duration(timer._steps["publish"]))
+        add_breadcrumb(
+            category="stage",
+            message=f"publish completed in {_fmt_duration(timer._steps['publish'])}",
+            level="info" if pr_url else "error",
+        )
         if not pr_url:
             return False
 
         with timer.step("ci"):
             pr_url = self._run_ci_fix_loop(ctx, pr_url)
+        add_breadcrumb(
+            category="stage",
+            message=f"ci completed in {_fmt_duration(timer._steps['ci'])}",
+            level="info" if pr_url else "error",
+        )
         if not pr_url:
             return False
 
         with timer.step("review"):
             pr_url = self._run_review_fix_loop(ctx, pr_url)
+        add_breadcrumb(
+            category="stage",
+            message=f"review completed in {_fmt_duration(timer._steps['review'])}",
+            level="info" if pr_url else "error",
+        )
         if not pr_url:
             return False
 

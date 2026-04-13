@@ -36,6 +36,13 @@ ci:
   timeout: 600
   poll_interval: 30
 
+# Sentry error tracking (optional — requires `pip install aiorchestra[sentry]`).
+# The DSN can also be set via the SENTRY_DSN environment variable.
+sentry:
+  dsn: ""                        # paste your Sentry DSN here
+  environment: "production"      # or "staging", "development", etc.
+  traces_sample_rate: 0.0        # 0.0–1.0; keep low on free tier
+
 # OSINT enrichment — gather external intelligence before implementation.
 # Runs shell tools locally and summarises via a local Ollama model.
 # Zero cloud AI tokens spent.
