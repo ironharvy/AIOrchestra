@@ -121,6 +121,68 @@ rules:
     languages: [python]
     severity: WARNING
 
+  # --- Tier 2b: Anti-shortcut Guards ---
+
+  - id: no-try-except-import
+    patterns:
+      - pattern: |
+          try:
+              import $MOD
+              ...
+          except ImportError:
+              ...
+    paths:
+      exclude:
+        - tests/*
+    message: >-
+      Do not wrap imports in try/except ImportError. If the module is
+      required, add it to pyproject.toml dependencies. If it is truly
+      optional, document why in a comment and use a TYPE_CHECKING guard
+      instead.
+    languages: [python]
+    severity: ERROR
+
+  - id: no-try-except-from-import
+    patterns:
+      - pattern: |
+          try:
+              from $MOD import $NAME
+              ...
+          except ImportError:
+              ...
+    paths:
+      exclude:
+        - tests/*
+    message: >-
+      Do not wrap imports in try/except ImportError. If the module is
+      required, add it to pyproject.toml dependencies.
+    languages: [python]
+    severity: ERROR
+
+  - id: no-noqa-blanket
+    pattern-regex: '#\s*noqa\s*$'
+    paths:
+      exclude:
+        - tests/*
+    message: >-
+      Blanket '# noqa' suppresses all warnings on a line. Fix the
+      violation instead, or use a specific code like '# noqa: E501'
+      with a justification comment if truly needed.
+    languages: [python]
+    severity: WARNING
+
+  - id: no-type-ignore-blanket
+    pattern-regex: '#\s*type:\s*ignore\s*$'
+    paths:
+      exclude:
+        - tests/*
+    message: >-
+      Blanket '# type: ignore' hides real type errors. Use a specific
+      error code like '# type: ignore[import-untyped]' or fix the
+      underlying issue.
+    languages: [python]
+    severity: WARNING
+
   # --- Tier 3: Maintainability ---
 
   - id: no-deep-merge-bypass
