@@ -26,6 +26,83 @@ class TestInitNoSdk:
         sentry_mod.set_context("ctx", {"a": 1})
         sentry_mod.add_breadcrumb(category="test", message="msg")
         sentry_mod.capture_exception(RuntimeError("boom"))
+        sentry_mod.flush()
+
+
+class TestInitIdempotent:
+    """init() must be safe to call multiple times."""
+
+    def test_second_init_is_noop(self):
+        _reset()
+        mock_sdk = MagicMock()
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict("os.environ", {}, clear=False),
+        ):
+            sentry_mod.init({"sentry": {"dsn": "https://key@sentry.io/1"}})
+            sentry_mod.init({"sentry": {"dsn": "https://other@sentry.io/2"}})
+
+        # Second call must NOT re-init (which would replace the hub and lose
+        # accumulated tags/breadcrumbs).
+        assert mock_sdk.init.call_count == 1
+
+
+class TestTracesSampleRateEnv:
+    """SENTRY_TRACES_SAMPLE_RATE env var overrides config."""
+
+    def test_env_overrides_traces_sample_rate(self):
+        _reset()
+        mock_sdk = MagicMock()
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict(
+                "os.environ",
+                {
+                    "SENTRY_DSN": "https://key@sentry.io/1",
+                    "SENTRY_TRACES_SAMPLE_RATE": "0.25",
+                },
+            ),
+        ):
+            sentry_mod.init({"sentry": {"dsn": "", "traces_sample_rate": 0.0}})
+
+        assert mock_sdk.init.call_args[1]["traces_sample_rate"] == 0.25
+
+    def test_invalid_env_rate_falls_back_to_config(self):
+        _reset()
+        mock_sdk = MagicMock()
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict(
+                "os.environ",
+                {
+                    "SENTRY_DSN": "https://key@sentry.io/1",
+                    "SENTRY_TRACES_SAMPLE_RATE": "not-a-number",
+                },
+            ),
+        ):
+            sentry_mod.init({"sentry": {"dsn": "", "traces_sample_rate": 0.1}})
+
+        assert mock_sdk.init.call_args[1]["traces_sample_rate"] == 0.1
+
+
+class TestFlush:
+    """flush() delegates to the SDK when initialised, no-op otherwise."""
+
+    def test_flush_calls_sdk_when_initialised(self):
+        _reset()
+        mock_sdk = MagicMock()
+        with (
+            patch.object(sentry_mod, "_HAS_SDK", True),
+            patch.object(sentry_mod, "sentry_sdk", mock_sdk, create=True),
+            patch.dict("os.environ", {}, clear=False),
+        ):
+            sentry_mod.init({"sentry": {"dsn": "https://key@sentry.io/1"}})
+            sentry_mod.flush(timeout=5.0)
+
+        mock_sdk.flush.assert_called_once_with(5.0)
 
 
 class TestInitWithSdk:
