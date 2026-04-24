@@ -49,7 +49,7 @@ def discover_issues(
             "--repo",
             repo,
             "--label",
-            label,
+            DISPATCH_LABEL,
             "--state",
             "open",
             "--json",

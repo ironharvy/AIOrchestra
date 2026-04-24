@@ -260,6 +260,41 @@ def test_discover_all_skips_issues_with_skip_labels(monkeypatch):
     assert result["owner/repo-a"][0]["number"] == 2
 
 
+def test_discover_uses_dispatch_label_for_gh_query(monkeypatch):
+    """The gh query must use DISPATCH_LABEL, not the config label."""
+    captured_cmds = []
+
+    def fake_run(cmd, logger=None):
+        captured_cmds.append(cmd)
+        return _completed_process(
+            [
+                {
+                    "number": 1,
+                    "title": "Build landing page",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}, {"name": "codex"}],
+                    "assignees": [],
+                }
+            ]
+        )
+
+    monkeypatch.setattr("aiorchestra.stages.discover.run_command", fake_run)
+
+    issues = discover_issues(
+        "owner/flower_shop",
+        "claude",
+        agent_label="codex",
+        retries=1,
+        delay=0,
+    )
+
+    assert len(issues) == 1
+    assert issues[0]["number"] == 1
+    assert "--label" in captured_cmds[0]
+    label_idx = captured_cmds[0].index("--label")
+    assert captured_cmds[0][label_idx + 1] == "aiorchestra"
+
+
 def test_discover_normalizes_comments(monkeypatch):
     """Issue comments should be extracted and normalized."""
     monkeypatch.setattr(
