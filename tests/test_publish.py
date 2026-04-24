@@ -1,5 +1,6 @@
 """Tests for the publish stage — PR creation and existing-PR detection."""
 
+import subprocess
 import types
 
 from aiorchestra.stages import publish as pub_mod
@@ -141,6 +142,115 @@ def test_build_pr_body_rich(monkeypatch):
     assert "`enhancement`" in body
     assert "`logging`" in body
     assert "Closes #24" in body
+
+
+def test_build_pr_body_truncates_issue_and_diff_stat(monkeypatch):
+    """PR bodies should cap long issue text and very long diff --stat output."""
+    issue = {
+        "number": 24,
+        "title": "Add multi-level verbose logging",
+        "body": "A" * 80,
+    }
+    file_lines = [f" src/module_{i:03d}.py | 1 +" for i in range(6)]
+    diff_stat = "\n".join(
+        file_lines
+        + [
+            " 6 files changed, 6 insertions(+)",
+        ]
+    )
+
+    monkeypatch.setattr(pub_mod, "_MAX_ISSUE_BODY_CHARS", 40)
+    monkeypatch.setattr(pub_mod, "_MAX_DIFF_STAT_LINES", 2)
+    monkeypatch.setattr(pub_mod, "_MAX_PR_BODY_CHARS", 10_000)
+    monkeypatch.setattr(
+        pub_mod,
+        "run_command",
+        lambda cmd, cwd=None, logger=None: _make_result(stdout=diff_stat),
+    )
+
+    body = _build_pr_body(issue, REPO_ROOT)
+
+    assert "Issue description truncated" in body
+    assert "src/module_000.py" in body
+    assert "src/module_001.py" in body
+    assert "src/module_002.py" not in body
+    assert "Diff stat truncated to first 2 lines" in body
+    assert "6 files changed, 6 insertions(+)" in body
+
+
+def test_build_pr_body_applies_final_body_cap(monkeypatch):
+    """A final safety cap should keep the PR body under the configured limit."""
+    issue = {
+        "number": 24,
+        "title": "Add multi-level verbose logging",
+        "body": "B" * 200,
+    }
+
+    monkeypatch.setattr(pub_mod, "_MAX_ISSUE_BODY_CHARS", 200)
+    monkeypatch.setattr(pub_mod, "_MAX_PR_BODY_CHARS", 120)
+    monkeypatch.setattr(
+        pub_mod,
+        "run_command",
+        lambda cmd, cwd=None, logger=None: _make_result(stdout=" src/log.py | 1 +\n"),
+    )
+
+    body = _build_pr_body(issue, REPO_ROOT)
+
+    assert len(body) <= 120
+    assert "[PR body truncated to 120 characters.]" in body
+    assert body.endswith("Closes #24")
+
+
+def test_create_pr_retries_transient_failure(monkeypatch):
+    """Transient GitHub transport failures should be retried once."""
+    calls = []
+    new_url = "https://github.com/owner/repo/pull/30"
+
+    def fake_run_command_or_fail(cmd, *, error_msg, cwd=None, shell=None, logger=None):
+        calls.append(cmd)
+        if len(calls) == 1:
+            raise pub_mod.CommandError(
+                "PR creation failed: connection reset by peer",
+                subprocess.CompletedProcess(cmd, 1, stdout="", stderr="connection reset by peer"),
+            )
+        return _make_result(stdout=new_url + "\n")
+
+    monkeypatch.setattr(pub_mod, "_build_pr_body", lambda issue, repo_root: "short body")
+    monkeypatch.setattr(pub_mod, "_find_existing_pr", lambda repo, branch, repo_root: None)
+    monkeypatch.setattr(pub_mod, "run_command_or_fail", fake_run_command_or_fail)
+    monkeypatch.setattr(pub_mod.time, "sleep", lambda _: None)
+
+    result = _create_pr(REPO, BRANCH, ISSUE, REPO_ROOT)
+
+    assert result == new_url
+    assert len(calls) == 2
+
+
+def test_create_pr_does_not_retry_body_too_long(monkeypatch):
+    """Deterministic content failures should fail immediately."""
+    calls = []
+
+    def fake_run_command_or_fail(cmd, *, error_msg, cwd=None, shell=None, logger=None):
+        calls.append(cmd)
+        raise pub_mod.CommandError(
+            "PR creation failed: body is too long",
+            subprocess.CompletedProcess(
+                cmd,
+                1,
+                stdout="",
+                stderr="GraphQL: Body is too long (maximum is 65536 characters)",
+            ),
+        )
+
+    monkeypatch.setattr(pub_mod, "_build_pr_body", lambda issue, repo_root: "short body")
+    monkeypatch.setattr(pub_mod, "_find_existing_pr", lambda repo, branch, repo_root: None)
+    monkeypatch.setattr(pub_mod, "run_command_or_fail", fake_run_command_or_fail)
+    monkeypatch.setattr(pub_mod.time, "sleep", lambda _: None)
+
+    result = _create_pr(REPO, BRANCH, ISSUE, REPO_ROOT)
+
+    assert result is None
+    assert len(calls) == 1
 
 
 # ---------------------------------------------------------------------------

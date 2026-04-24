@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from aiorchestra.stages._shell import run_command
+from aiorchestra.stages._workspace_artifacts import ensure_local_git_excludes
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ def prepare_environment(repo: str, branch: str, workspace: str | None = None) ->
 
         # -- Phase 1: Git ------------------------------------------------
         _setup_git(repo, branch, repo_dir)
+        ensure_local_git_excludes(repo_dir)
 
         # -- Phase 2: Virtual environment ---------------------------------
         _setup_venv(repo_dir)
