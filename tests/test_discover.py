@@ -295,6 +295,49 @@ def test_discover_uses_dispatch_label_for_gh_query(monkeypatch):
     assert captured_cmds[0][label_idx + 1] == "aiorchestra"
 
 
+def test_discover_without_filter_returns_all_ready_issues(monkeypatch):
+    """Without an agent label, every non-skipped issue should be returned."""
+    monkeypatch.setattr(
+        "aiorchestra.stages.discover.run_command",
+        lambda cmd, logger=None: _completed_process(
+            [
+                {
+                    "number": 1,
+                    "title": "Codex issue",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}, {"name": "codex"}],
+                    "assignees": [],
+                },
+                {
+                    "number": 2,
+                    "title": "Claude issue",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}, {"name": "claude"}],
+                    "assignees": [],
+                },
+                {
+                    "number": 3,
+                    "title": "Unlabelled (dispatch only)",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}],
+                    "assignees": [],
+                },
+                {
+                    "number": 4,
+                    "title": "Already reviewed",
+                    "body": "",
+                    "labels": [{"name": "aiorchestra"}, {"name": "awaiting-review"}],
+                    "assignees": [],
+                },
+            ]
+        ),
+    )
+
+    issues = discover_issues("owner/repo", retries=1, delay=0)
+
+    assert [i["number"] for i in issues] == [1, 2, 3]
+
+
 def test_discover_normalizes_comments(monkeypatch):
     """Issue comments should be extracted and normalized."""
     monkeypatch.setattr(

@@ -11,7 +11,6 @@ from pathlib import Path
 import yaml
 
 DEFAULTS = {
-    "label": "claude",
     "ai": {
         "provider": "claude-code",
         "model": "claude-opus-4-6",

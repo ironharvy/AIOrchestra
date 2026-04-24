@@ -18,7 +18,7 @@ DISPATCH_LABEL = "aiorchestra"
 
 def discover_issues(
     repo: str,
-    label: str,
+    label: str | None = None,
     issue_number: int | None = None,
     delay: int = 60,
     retries: int = 3,
@@ -27,8 +27,14 @@ def discover_issues(
     """Fetch issues from GitHub using the gh CLI.
 
     Returns issue dicts enriched with normalized label and assignee names.
+
+    If both ``label`` and ``agent_label`` are falsy, no agent-family filter is
+    applied and every ``aiorchestra``-labeled ready issue is returned.  This
+    enables auto-routing where the caller resolves the agent from each issue's
+    own labels (see ``resolve_agent``).
     """
-    required_label = normalize_agent_family(agent_label or label)
+    filter_source = agent_label or label
+    required_label = normalize_agent_family(filter_source) if filter_source else None
 
     if issue_number:
         cmd = [
@@ -82,10 +88,15 @@ def discover_issues(
         return []
 
     issues = [_normalize_issue(issue) for issue in data]
-    eligible_issues = [issue for issue in issues if required_label in issue.get("labels", [])]
-    if not eligible_issues:
-        log.error("No issues matched required agent label: %s", required_label)
-        return []
+    if required_label is None:
+        eligible_issues = issues
+    else:
+        eligible_issues = [
+            issue for issue in issues if required_label in issue.get("labels", [])
+        ]
+        if not eligible_issues:
+            log.error("No issues matched required agent label: %s", required_label)
+            return []
 
     # Filter out issues that are already in progress or waiting on a human.
     ready_issues = [
