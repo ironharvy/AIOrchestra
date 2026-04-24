@@ -67,6 +67,7 @@ DEFAULTS = {
         "enabled": True,
         "timeout": 600,
         "poll_interval": 30,
+        "no_checks_grace": 120,
     },
     "osint": {
         "enabled": False,

@@ -35,6 +35,7 @@ ci:
   enabled: true
   timeout: 600
   poll_interval: 30
+  no_checks_grace: 120  # seconds to wait before treating "no CI checks" as a pass
 
 # Sentry error tracking (optional — requires `pip install aiorchestra[sentry]`).
 # The DSN can also be set via the SENTRY_DSN environment variable.
