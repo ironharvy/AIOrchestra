@@ -165,12 +165,19 @@ class Pipeline:
             log.info("  #%d -> %s", issue["number"], agent)
             by_agent.setdefault(agent, []).append(issue)
 
+        current_provider = self.config.get("ai", {}).get("provider")
         for agent, agent_issues in by_agent.items():
             expected_provider = provider_for_agent(agent)
             child_config = _deep_merge(
                 self.config,
                 {"ai": {"provider": expected_provider}},
             )
+            # Each provider CLI expects its own model names — an inherited
+            # `ai.model` like `claude-opus-4-6` would be rejected by codex,
+            # gemini, etc.  Drop it when we're switching providers so the
+            # child CLI falls back to its own default.
+            if expected_provider != current_provider:
+                child_config.setdefault("ai", {}).pop("model", None)
             child = Pipeline(
                 repo=self.repo,
                 label=agent,
@@ -512,6 +519,11 @@ class Pipeline:
                     self.label,
                 )
                 config = _deep_merge(config, {"ai": {"provider": expected_provider}})
+                # Inherited `ai.model` is tied to the previous provider and
+                # will be rejected by a different CLI (e.g. codex refuses
+                # claude-opus-4-6).  Drop it so the new provider uses its
+                # own default unless the user set a compatible model.
+                config.setdefault("ai", {}).pop("model", None)
 
         # Log resolved config at startup.
         ai_cfg = config.get("ai", {})

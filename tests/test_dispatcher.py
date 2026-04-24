@@ -335,10 +335,12 @@ def test_pipeline_auto_route_groups_by_agent_label(monkeypatch):
     def spy_run(self, issues=None):
         if self.label is None:
             return original_run(self, issues=issues)
+        ai_cfg = self.config.get("ai", {})
         spawned.append(
             {
                 "label": self.label,
-                "provider": self.config.get("ai", {}).get("provider"),
+                "provider": ai_cfg.get("provider"),
+                "model": ai_cfg.get("model"),
                 "issue_numbers": [i["number"] for i in (issues or [])],
             }
         )
@@ -349,7 +351,7 @@ def test_pipeline_auto_route_groups_by_agent_label(monkeypatch):
     pipeline = Pipeline(
         repo="owner/repo",
         label=None,
-        config={"ai": {"provider": "claude-code"}},
+        config={"ai": {"provider": "claude-code", "model": "claude-opus-4-6"}},
         parallel=False,
     )
 
@@ -359,8 +361,13 @@ def test_pipeline_auto_route_groups_by_agent_label(monkeypatch):
     assert set(by_label.keys()) == {"codex", "claude"}
     assert by_label["codex"]["provider"] == "codex"
     assert by_label["codex"]["issue_numbers"] == [1]
+    # Model must be dropped when switching providers — codex would reject
+    # claude-opus-4-6 inherited from the parent config.
+    assert by_label["codex"]["model"] is None
     assert by_label["claude"]["provider"] == "claude-code"
     assert by_label["claude"]["issue_numbers"] == [2, 3]
+    # Provider stayed the same, so the claude-specific model is preserved.
+    assert by_label["claude"]["model"] == "claude-opus-4-6"
 
 
 def test_pipeline_auto_route_stops_on_failure(monkeypatch):
