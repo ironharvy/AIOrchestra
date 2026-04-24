@@ -91,9 +91,7 @@ def discover_issues(
     if required_label is None:
         eligible_issues = issues
     else:
-        eligible_issues = [
-            issue for issue in issues if required_label in issue.get("labels", [])
-        ]
+        eligible_issues = [issue for issue in issues if required_label in issue.get("labels", [])]
         if not eligible_issues:
             log.error("No issues matched required agent label: %s", required_label)
             return []

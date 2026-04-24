@@ -120,9 +120,7 @@ def setup_logging(
     root.addHandler(stderr_handler)
 
     resolved_log_file = (
-        log_file
-        or os.environ.get("AIORCHESTRA_LOG_FILE", "")
-        or os.environ.get("LOG_FILE", "")
+        log_file or os.environ.get("AIORCHESTRA_LOG_FILE", "") or os.environ.get("LOG_FILE", "")
     )
     if resolved_log_file:
         try:

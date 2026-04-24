@@ -116,9 +116,7 @@ def validate(config: PipelineConfig, repo_root: str | None = None) -> FeedbackRe
                 log.info("pytest collected no tests — treating as pass")
 
     # T1: Static analysis (semgrep, bandit, etc.)
-    errors.extend(
-        _run_static_analysis(review_cfg, repo_root, python_project=python_project)
-    )
+    errors.extend(_run_static_analysis(review_cfg, repo_root, python_project=python_project))
 
     log.info("[validate] completed in %.1fs (%s)", timer.total, timer.summary())
 
