@@ -88,10 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--log-file",
         default=None,
-        help=(
-            "Write logs to this file in addition to stderr. "
-            "Overrides $AIORCHESTRA_LOG_FILE."
-        ),
+        help=("Write logs to this file in addition to stderr. Overrides $AIORCHESTRA_LOG_FILE."),
     )
     run.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
@@ -129,10 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     dispatch.add_argument(
         "--log-file",
         default=None,
-        help=(
-            "Write logs to this file in addition to stderr. "
-            "Overrides $AIORCHESTRA_LOG_FILE."
-        ),
+        help=("Write logs to this file in addition to stderr. Overrides $AIORCHESTRA_LOG_FILE."),
     )
     dispatch.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
@@ -164,10 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument(
         "--log-file",
         default=None,
-        help=(
-            "Write logs to this file in addition to stderr. "
-            "Overrides $AIORCHESTRA_LOG_FILE."
-        ),
+        help=("Write logs to this file in addition to stderr. Overrides $AIORCHESTRA_LOG_FILE."),
     )
 
     return parser

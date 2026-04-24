@@ -228,9 +228,7 @@ def test_validate_treats_pytest_no_tests_collected_as_pass(monkeypatch, tmp_path
     def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
         cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
         if cmd_str.startswith("pytest"):
-            return types.SimpleNamespace(
-                returncode=5, stdout="no tests ran", stderr=""
-            )
+            return types.SimpleNamespace(returncode=5, stdout="no tests ran", stderr="")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(val_mod, "run_command", fake_run)
