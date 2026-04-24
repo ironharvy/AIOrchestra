@@ -5,7 +5,8 @@ from aiorchestra.config import load_config, _deep_merge, _merge_named_lists
 
 def test_defaults_returned_when_no_file():
     config = load_config("/nonexistent/path.yaml")
-    assert config["label"] == "claude"
+    # No default `label` — absence enables auto-routing per issue's agent label.
+    assert "label" not in config
     assert config["ai"]["max_retries"] == 3
     assert "branch_prefix" not in config
 
