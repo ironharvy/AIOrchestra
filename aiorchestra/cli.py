@@ -86,6 +86,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
     )
     run.add_argument(
+        "--log-file",
+        default=None,
+        help=(
+            "Write logs to this file in addition to stderr. "
+            "Overrides $AIORCHESTRA_LOG_FILE."
+        ),
+    )
+    run.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
     )
     run.add_argument(
@@ -119,6 +127,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
     )
     dispatch.add_argument(
+        "--log-file",
+        default=None,
+        help=(
+            "Write logs to this file in addition to stderr. "
+            "Overrides $AIORCHESTRA_LOG_FILE."
+        ),
+    )
+    dispatch.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
     )
     dispatch.add_argument(
@@ -145,6 +161,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
     )
+    setup.add_argument(
+        "--log-file",
+        default=None,
+        help=(
+            "Write logs to this file in addition to stderr. "
+            "Overrides $AIORCHESTRA_LOG_FILE."
+        ),
+    )
 
     return parser
 
@@ -163,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    setup_logging(verbosity=getattr(args, "verbose", 0))
+    setup_logging(
+        verbosity=getattr(args, "verbose", 0),
+        log_file=getattr(args, "log_file", None),
+    )
 
     if args.command == "run":
         config = load_config(args.config)

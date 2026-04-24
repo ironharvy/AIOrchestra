@@ -213,6 +213,25 @@ def test_setup_logging_firehose_allows_noisy(monkeypatch):
     root.handlers.clear()
 
 
+def test_setup_logging_file_handler_cli_arg(monkeypatch, tmp_path):
+    """The explicit log_file argument wins over environment variables."""
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    monkeypatch.delenv("LOG_FILE", raising=False)
+    monkeypatch.delenv("AIORCHESTRA_LOG_FILE", raising=False)
+    log_path = str(tmp_path / "subdir" / "aiorchestra.log")
+    root = _fresh_root()
+    setup_logging(verbosity=1, log_file=log_path)
+    logger = logging.getLogger("aiorchestra.test.cli")
+    logger.info("cli arg message")
+    for h in root.handlers:
+        h.flush()
+    root.handlers.clear()
+
+    assert os.path.exists(log_path)
+    lines = open(log_path).readlines()
+    assert any("cli arg message" in line for line in lines)
+
+
 def test_setup_logging_file_handler(monkeypatch, tmp_path):
     monkeypatch.delenv("LOG_LEVEL", raising=False)
     log_path = str(tmp_path / "aiorchestra.log")

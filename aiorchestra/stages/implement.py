@@ -10,6 +10,35 @@ from aiorchestra.templates import render_template
 
 log = logging.getLogger(__name__)
 
+# Cap the size of error feedback we forward into a fix-up prompt. Large
+# static-analysis dumps (e.g. bandit scanning a venv) can explode the prompt
+# past CLI argv limits and overwhelm the model.  24 KiB keeps enough context
+# for humans and models while staying well below common shell/CLI caps.
+_MAX_ERROR_TEXT_BYTES = 24 * 1024
+
+
+def _truncate_error_text(error_text: str) -> str:
+    """Trim oversized validation/CI feedback to a safe size for the prompt."""
+    encoded = error_text.encode("utf-8", errors="replace")
+    if len(encoded) <= _MAX_ERROR_TEXT_BYTES:
+        return error_text
+
+    head = _MAX_ERROR_TEXT_BYTES // 2
+    tail = _MAX_ERROR_TEXT_BYTES - head
+    prefix = encoded[:head].decode("utf-8", errors="replace")
+    suffix = encoded[-tail:].decode("utf-8", errors="replace")
+    omitted = len(encoded) - _MAX_ERROR_TEXT_BYTES
+    marker = (
+        f"\n\n... [truncated {omitted} bytes of error output — showing first "
+        f"{head} and last {tail} bytes] ...\n\n"
+    )
+    log.warning(
+        "Truncated error feedback from %d to %d bytes before sending to AI",
+        len(encoded),
+        _MAX_ERROR_TEXT_BYTES,
+    )
+    return prefix + marker + suffix
+
 
 def _build_prompt(
     issue: IssueData,
@@ -39,7 +68,7 @@ def _build_prompt(
         "comments_section": comments_section,
     }
     if error_text is not None:
-        template_kwargs["errors"] = error_text
+        template_kwargs["errors"] = _truncate_error_text(error_text)
 
     return render_template(
         prompt_name,
