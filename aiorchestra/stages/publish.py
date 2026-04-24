@@ -18,7 +18,6 @@ from aiorchestra.stages.types import IssueData, PublishResult
 
 log = logging.getLogger(__name__)
 
-_MAX_ISSUE_BODY_CHARS = 12_000
 _MAX_DIFF_STAT_LINES = 20
 _MAX_PR_BODY_CHARS = 60_000
 _PR_CREATE_ATTEMPTS = 2
@@ -140,17 +139,6 @@ def _find_existing_pr(repo: str, branch: str, repo_root: str) -> str | None:
     return None
 
 
-def _truncate_text(text: str, max_chars: int, *, label: str) -> str:
-    """Cap a long text block and append a short truncation note."""
-    if len(text) <= max_chars:
-        return text
-
-    omitted = len(text) - max_chars
-    truncated = text[:max_chars].rstrip()
-    log.info("Truncated %s from %d to %d characters", label, len(text), max_chars)
-    return f"{truncated}\n\n[{label} truncated; omitted {omitted} characters.]"
-
-
 def _summarize_diff_stat(diff_output: str) -> str:
     """Cap diff-stat output line count for the PR body (no path masking)."""
     lines = [line for line in diff_output.strip().splitlines() if line.strip()]
@@ -199,8 +187,8 @@ def _is_transient_pr_error(detail: str) -> bool:
     return any(pattern in lowered for pattern in _TRANSIENT_PR_ERROR_PATTERNS)
 
 
-def _build_pr_body(issue: IssueData, repo_root: str) -> str:
-    """Build a descriptive PR body from the issue metadata and diff stats."""
+def _build_pr_body(issue: IssueData, repo_root: str, repo: str) -> str:
+    """Build a PR body: link to the issue, diff summary, labels (no full issue text)."""
     number = issue["number"]
     sections: list[str] = []
     closing_line = f"Closes #{number}"
@@ -208,16 +196,9 @@ def _build_pr_body(issue: IssueData, repo_root: str) -> str:
     # Summary
     sections.append(f"Automated implementation for #{number}.")
 
-    # Issue context — reproduce the original description so reviewers don't
-    # have to click through.
-    issue_body = issue.get("body", "").strip()
-    if issue_body:
-        rendered_body = _truncate_text(
-            issue_body,
-            _MAX_ISSUE_BODY_CHARS,
-            label="Issue description",
-        )
-        sections.append(f"## Issue description\n\n{rendered_body}")
+    # Full requirements live on the issue page; do not paste the issue body here.
+    issue_url = f"https://github.com/{repo}/issues/{number}"
+    sections.append(f"**Issue:** {issue_url}")
 
     # Changed files summary via git diff --stat (zero AI cost).
     diff_stat = run_command(
@@ -250,7 +231,7 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
         return existing
 
     title = f"Fix #{issue['number']}: {issue['title']}"
-    body = _build_pr_body(issue, repo_root)
+    body = _build_pr_body(issue, repo_root, repo)
 
     log.info("Creating PR for issue #%d", issue["number"])
     for attempt in range(1, _PR_CREATE_ATTEMPTS + 1):
