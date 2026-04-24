@@ -85,12 +85,19 @@ def _use_json(stream: object) -> bool:
     return not (hasattr(stream, "isatty") and stream.isatty())
 
 
-def setup_logging(verbosity: int = 0, *, verbose: bool = False) -> None:
+def setup_logging(
+    verbosity: int = 0,
+    *,
+    verbose: bool = False,
+    log_file: str | None = None,
+) -> None:
     """Configure root logger.
 
     Args:
         verbosity: Number of -v flags (0=WARNING, 1=INFO, 2=DEBUG, 3=firehose).
         verbose:   Legacy boolean flag — maps to verbosity=1 when True.
+        log_file:  Optional path for a plain-text file handler.  Falls back to
+                   ``$AIORCHESTRA_LOG_FILE`` / ``$LOG_FILE`` when omitted.
     """
     if verbose and verbosity == 0:
         verbosity = 1
@@ -112,18 +119,30 @@ def setup_logging(verbosity: int = 0, *, verbose: bool = False) -> None:
     root.setLevel(level)
     root.addHandler(stderr_handler)
 
-    # Optional file handler — always JSON
-    log_file = os.environ.get("LOG_FILE", "")
-    if log_file:
+    resolved_log_file = (
+        log_file
+        or os.environ.get("AIORCHESTRA_LOG_FILE", "")
+        or os.environ.get("LOG_FILE", "")
+    )
+    if resolved_log_file:
         try:
-            file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            parent = os.path.dirname(resolved_log_file)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            file_handler = logging.FileHandler(resolved_log_file, encoding="utf-8")
             file_handler.setLevel(level)
+            # File handler uses JSON so structured fields survive forks and
+            # are easy to parse after the run.
             file_handler.setFormatter(JSONFormatter())
             root.addHandler(file_handler)
-        except OSError:
-            logging.warning("Could not open log file %s, file logging disabled", log_file)
+            logging.getLogger(__name__).info("Logging to file: %s", resolved_log_file)
+        except OSError as exc:
+            logging.warning(
+                "Could not open log file %s (%s) — file logging disabled",
+                resolved_log_file,
+                exc,
+            )
 
-    # Suppress noisy third-party loggers unless firehose (-vvv)
     if verbosity < 3:
         for name in _NOISY_LOGGERS:
             logging.getLogger(name).setLevel(logging.WARNING)

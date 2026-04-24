@@ -3,7 +3,11 @@
 import types
 
 from aiorchestra.stages import validate as val_mod
-from aiorchestra.stages.validate import _run_static_analysis, validate
+from aiorchestra.stages.validate import (
+    _has_python_sources,
+    _run_static_analysis,
+    validate,
+)
 
 
 def test_validate_passes_when_lint_and_tests_succeed(monkeypatch):
@@ -147,3 +151,95 @@ def test_validate_includes_static_analysis_errors(monkeypatch):
     assert not ok
     assert "bandit" in errors
     assert "B101" in errors
+
+
+# ---------------------------------------------------------------------------
+# Python-source detection and skip-when-non-python behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_has_python_sources_detects_py_files(tmp_path):
+    (tmp_path / "module.py").write_text("print('hi')\n")
+    assert _has_python_sources(str(tmp_path)) is True
+
+
+def test_has_python_sources_ignores_py_in_venv(tmp_path):
+    """A stray `.venv/` from _setup_venv must not make a static repo look
+    like a Python project."""
+    (tmp_path / "index.html").write_text("<html></html>\n")
+    venv = tmp_path / ".venv" / "lib" / "python3.12" / "site-packages"
+    venv.mkdir(parents=True)
+    (venv / "pygments.py").write_text("pass\n")
+    assert _has_python_sources(str(tmp_path)) is False
+
+
+def test_has_python_sources_none_is_permissive():
+    """Legacy callers that pass repo_root=None should not be silenced."""
+    assert _has_python_sources(None) is True
+
+
+def test_validate_skips_python_tools_for_non_python_repo(monkeypatch, tmp_path):
+    """ruff/pytest/bandit must be skipped when the repo has no Python files."""
+    (tmp_path / "index.html").write_text("<html></html>\n")
+    (tmp_path / "styles.css").write_text("body { }\n")
+
+    invoked = []
+
+    def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
+        cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
+        invoked.append(cmd_str)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(val_mod, "run_command", fake_run)
+    monkeypatch.setattr(val_mod.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+
+    config = {
+        "test": {"command": "pytest", "lint_command": "ruff check ."},
+        "review": {
+            "tiers": [
+                {
+                    "name": "static-analysis",
+                    "enabled": True,
+                    "commands": [
+                        "bandit -r .",
+                        "semgrep --config=auto --quiet .",
+                    ],
+                }
+            ]
+        },
+    }
+
+    ok, errors = validate(config, repo_root=str(tmp_path))
+
+    assert ok
+    assert errors is None
+    # Neither ruff, pytest, nor bandit should have been invoked.
+    assert not any("ruff" in c for c in invoked)
+    assert not any(c.startswith("pytest") for c in invoked)
+    assert not any("bandit" in c for c in invoked)
+    # semgrep is language-agnostic, so it still runs.
+    assert any("semgrep" in c for c in invoked)
+
+
+def test_validate_treats_pytest_no_tests_collected_as_pass(monkeypatch, tmp_path):
+    """pytest exit code 5 (no tests collected) must not trip validation."""
+    (tmp_path / "app.py").write_text("def add(a, b):\n    return a + b\n")
+
+    def fake_run(cmd, *, cwd=None, check=False, shell=None, logger=None):
+        cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
+        if cmd_str.startswith("pytest"):
+            return types.SimpleNamespace(
+                returncode=5, stdout="no tests ran", stderr=""
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(val_mod, "run_command", fake_run)
+    monkeypatch.setattr(val_mod.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+
+    ok, errors = validate(
+        {"test": {"command": "pytest", "lint_command": "ruff check ."}},
+        repo_root=str(tmp_path),
+    )
+
+    assert ok
+    assert errors is None

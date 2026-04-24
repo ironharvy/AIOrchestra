@@ -277,8 +277,13 @@ class Pipeline:
             _sentry_flush()
             os._exit(0)
 
-        except Exception:
-            log.exception("Unhandled error processing issue #%d", number)
+        except Exception as exc:
+            log.exception(
+                "Unhandled %s processing issue #%d: %s",
+                type(exc).__name__,
+                number,
+                exc,
+            )
             capture_exception()
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
             _sentry_flush()
@@ -322,8 +327,13 @@ class Pipeline:
         add_label(self.repo, number, LABEL_WORKING)
         try:
             result = self._process_issue(issue)
-        except Exception:
-            log.exception("Unhandled error processing issue #%d", number)
+        except Exception as exc:
+            log.exception(
+                "Unhandled %s processing issue #%d: %s",
+                type(exc).__name__,
+                number,
+                exc,
+            )
             capture_exception()
             swap_label(self.repo, number, LABEL_WORKING, LABEL_FAILED)
             return False

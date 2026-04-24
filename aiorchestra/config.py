@@ -28,8 +28,9 @@ DEFAULTS = {
                 "name": "static-analysis",
                 "enabled": True,
                 "commands": [
-                    "semgrep --config=auto --quiet .",
-                    "bandit -r . -q",
+                    "semgrep --config=auto --quiet "
+                    "--exclude .venv --exclude node_modules --exclude .git .",
+                    "bandit -r . -q -x ./.venv,./node_modules,./.git",
                 ],
             },
             {
