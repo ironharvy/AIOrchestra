@@ -10,7 +10,10 @@ from aiorchestra.stages._shell import (
     run_command,
     run_command_or_fail,
 )
-from aiorchestra.stages._workspace_artifacts import ensure_local_git_excludes, untrack_artifact_paths_from_index
+from aiorchestra.stages._workspace_artifacts import (
+    ensure_local_git_excludes,
+    untrack_artifact_paths_from_index,
+)
 from aiorchestra.stages.types import IssueData, PublishResult
 
 log = logging.getLogger(__name__)

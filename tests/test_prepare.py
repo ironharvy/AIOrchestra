@@ -1,6 +1,9 @@
 """Tests for prepare-stage workspace hygiene."""
 
-from aiorchestra.stages._workspace_artifacts import LOCAL_GIT_EXCLUDE_PATTERNS, ensure_local_git_excludes
+from aiorchestra.stages._workspace_artifacts import (
+    LOCAL_GIT_EXCLUDE_PATTERNS,
+    ensure_local_git_excludes,
+)
 
 
 def test_ensure_local_git_excludes_adds_patterns_once(tmp_path):

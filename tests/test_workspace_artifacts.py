@@ -48,7 +48,9 @@ def test_untrack_artifact_paths_removes_venv_from_index(tmp_path: Path) -> None:
         check=True,
         capture_output=True,
     )
-    subprocess.run(["git", "commit", "-m", "track venv and real"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "track venv and real"], cwd=repo, check=True, capture_output=True
+    )
     before = [p for p in _ls_files(repo).splitlines() if p]
     assert any(".venv" in p for p in before), "test setup must include tracked .venv"
 
