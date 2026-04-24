@@ -16,7 +16,11 @@ from aiorchestra._sentry import (
     set_context,
     set_tag,
 )
-from aiorchestra.ai import agent_family_from_config, build_agent_branch, provider_for_agent
+from aiorchestra.ai import (
+    build_agent_branch,
+    provider_for_agent,
+    resolve_agent,
+)
 from aiorchestra.ai._agents import KNOWN_AGENTS
 from aiorchestra.config import _deep_merge, load_config
 from aiorchestra.stages._shell import StageTimer, has_diff_from_main, run_command
@@ -88,7 +92,7 @@ class Pipeline:
     def __init__(
         self,
         repo: str,
-        label: str,
+        label: str | None,
         config: PipelineConfig,
         config_path: str | None = None,
         issue_number: int | None = None,
@@ -116,11 +120,14 @@ class Pipeline:
         ensure_labels(self.repo, dry_run=self.dry_run)
 
         if issues is None:
+            if self.label is None:
+                return self._run_auto_route()
+
             issues = discover_issues(
                 self.repo,
                 self.label,
                 self.issue_number,
-                agent_label=agent_family_from_config(self.config),
+                agent_label=self.label,
             )
         if not issues:
             log.info("No issues found.")
@@ -129,6 +136,57 @@ class Pipeline:
         if self.parallel:
             return self._run_parallel(issues)
         return self._run_sequential(issues)
+
+    # ------------------------------------------------------------------
+    # Auto-route: no --label given — resolve per issue from its labels
+    # ------------------------------------------------------------------
+
+    def _run_auto_route(self) -> int:
+        """Discover every aiorchestra-labeled issue and fan out by agent label.
+
+        When the caller did not pin a specific agent family, each issue is
+        routed to the agent implied by its own labels (via ``resolve_agent``).
+        Issues are grouped per agent so each spawned pipeline invokes the
+        correct provider and produces correctly-named branches.
+        """
+        issues = discover_issues(
+            self.repo,
+            label=None,
+            issue_number=self.issue_number,
+            agent_label=None,
+        )
+        if not issues:
+            log.info("No issues found.")
+            return 0
+
+        by_agent: dict[str, list[IssueData]] = {}
+        for issue in issues:
+            agent = resolve_agent(issue.get("labels", []))
+            log.info("  #%d -> %s", issue["number"], agent)
+            by_agent.setdefault(agent, []).append(issue)
+
+        for agent, agent_issues in by_agent.items():
+            expected_provider = provider_for_agent(agent)
+            child_config = _deep_merge(
+                self.config,
+                {"ai": {"provider": expected_provider}},
+            )
+            child = Pipeline(
+                repo=self.repo,
+                label=agent,
+                config=child_config,
+                config_path=self.config_path,
+                issue_number=self.issue_number,
+                dry_run=self.dry_run,
+                workspace=self.workspace,
+                parallel=self.parallel,
+                review_only=self.review_only,
+            )
+            result = child.run(issues=agent_issues)
+            if result != 0:
+                return result
+
+        return 0
 
     # ------------------------------------------------------------------
     # Sequential mode (original behaviour, useful for single-issue runs)

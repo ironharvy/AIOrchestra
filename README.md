@@ -82,20 +82,23 @@ pip install -e .
 # Run continuously — scan all your repos every 5 minutes
 aiorchestra dispatch --watch
 
-# Watch a single repo
-aiorchestra run --repo owner/repo --label claude --watch
+# Watch a single repo — each issue auto-routes to the agent named in its labels
+aiorchestra run --repo owner/repo --watch
 
 # Custom poll interval (seconds)
 aiorchestra dispatch --watch --poll-interval 120
 
-# One-shot: process all issues labeled "claude" in a repo
-aiorchestra run --repo owner/repo --label claude
+# One-shot: process every aiorchestra-labeled issue, routing per-issue
+aiorchestra run --repo owner/repo
+
+# One-shot: pin a specific agent family (claude, codex, gemini, jules, opencode)
+aiorchestra run --repo owner/repo --label codex
 
 # One-shot: process a specific issue
 aiorchestra run --repo owner/repo --issue 42
 
 # Dry run — show what would happen without executing
-aiorchestra run --repo owner/repo --label claude --dry-run
+aiorchestra run --repo owner/repo --dry-run
 
 # Scan all your repos for "aiorchestra"-labeled issues (one-shot)
 aiorchestra dispatch

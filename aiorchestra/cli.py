@@ -57,7 +57,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="Process issues and drive the AI pipeline")
     run.add_argument("--repo", required=True, help="GitHub repo (owner/repo)")
-    run.add_argument("--label", default=None, help="Issue label to filter by")
+    run.add_argument(
+        "--label",
+        default=None,
+        help=(
+            "Pin a specific agent family (claude, codex, gemini, jules, opencode). "
+            "When omitted, each issue is auto-routed to the agent implied by its labels."
+        ),
+    )
     run.add_argument("--issue", type=int, default=None, help="Specific issue number")
     run.add_argument("--config", default=None, help="Path to config YAML")
     run.add_argument(
@@ -163,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         _init_sentry(config)
         pipeline = Pipeline(
             repo=args.repo,
-            label=args.label or config.get("label", "claude"),
+            label=args.label or config.get("label"),
             issue_number=args.issue,
             config=config,
             config_path=args.config,

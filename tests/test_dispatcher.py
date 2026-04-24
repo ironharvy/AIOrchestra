@@ -298,3 +298,116 @@ def test_pipeline_run_with_presupplied_issues(monkeypatch, tmp_path):
     assert ("implement", 20) in calls
     assert ("publish", 10) in calls
     assert ("publish", 20) in calls
+
+
+# ---------------------------------------------------------------------------
+# Pipeline auto-route: no --label given → group by each issue's agent label
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_auto_route_groups_by_agent_label(monkeypatch):
+    """When label is None, the pipeline groups issues by resolved agent and
+    spawns a child pipeline per group with the corresponding provider."""
+    from aiorchestra.pipeline import Pipeline
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.ensure_labels",
+        lambda repo, dry_run=False: None,
+    )
+
+    discovered = [
+        {"number": 1, "title": "Codex task", "labels": ["aiorchestra", "codex"]},
+        {"number": 2, "title": "Claude task", "labels": ["aiorchestra", "claude"]},
+        {"number": 3, "title": "Bare task", "labels": ["aiorchestra"]},
+    ]
+
+    def fake_discover(repo, label=None, issue_number=None, agent_label=None, **_):
+        assert label is None
+        assert agent_label is None
+        return list(discovered)
+
+    monkeypatch.setattr("aiorchestra.pipeline.discover_issues", fake_discover)
+
+    spawned: list[dict] = []
+
+    original_run = Pipeline.run
+
+    def spy_run(self, issues=None):
+        if self.label is None:
+            return original_run(self, issues=issues)
+        spawned.append(
+            {
+                "label": self.label,
+                "provider": self.config.get("ai", {}).get("provider"),
+                "issue_numbers": [i["number"] for i in (issues or [])],
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(Pipeline, "run", spy_run)
+
+    pipeline = Pipeline(
+        repo="owner/repo",
+        label=None,
+        config={"ai": {"provider": "claude-code"}},
+        parallel=False,
+    )
+
+    assert pipeline.run() == 0
+
+    by_label = {entry["label"]: entry for entry in spawned}
+    assert set(by_label.keys()) == {"codex", "claude"}
+    assert by_label["codex"]["provider"] == "codex"
+    assert by_label["codex"]["issue_numbers"] == [1]
+    assert by_label["claude"]["provider"] == "claude-code"
+    assert by_label["claude"]["issue_numbers"] == [2, 3]
+
+
+def test_pipeline_auto_route_stops_on_failure(monkeypatch):
+    """A failing child pipeline aborts the auto-route loop."""
+    from aiorchestra.pipeline import Pipeline
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.ensure_labels",
+        lambda repo, dry_run=False: None,
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.discover_issues",
+        lambda *args, **kwargs: [
+            {"number": 1, "title": "A", "labels": ["aiorchestra", "codex"]},
+            {"number": 2, "title": "B", "labels": ["aiorchestra", "claude"]},
+        ],
+    )
+
+    call_count = {"n": 0}
+
+    original_run = Pipeline.run
+
+    def spy_run(self, issues=None):
+        if self.label is None:
+            return original_run(self, issues=issues)
+        call_count["n"] += 1
+        return 1
+
+    monkeypatch.setattr(Pipeline, "run", spy_run)
+
+    pipeline = Pipeline(repo="owner/repo", label=None, config={}, parallel=False)
+    assert pipeline.run() == 1
+    assert call_count["n"] == 1
+
+
+def test_pipeline_auto_route_no_issues(monkeypatch):
+    """Auto-route returns 0 when discovery finds nothing."""
+    from aiorchestra.pipeline import Pipeline
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.ensure_labels",
+        lambda repo, dry_run=False: None,
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.discover_issues",
+        lambda *args, **kwargs: [],
+    )
+
+    pipeline = Pipeline(repo="owner/repo", label=None, config={}, parallel=False)
+    assert pipeline.run() == 0
