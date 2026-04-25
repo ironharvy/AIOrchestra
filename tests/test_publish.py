@@ -117,16 +117,17 @@ def test_build_pr_body_minimal(monkeypatch):
         "run_command",
         lambda cmd, cwd=None, logger=None: _make_result(stdout=""),
     )
-    body = _build_pr_body(ISSUE, REPO_ROOT)
+    body = _build_pr_body(ISSUE, REPO_ROOT, REPO)
     assert "Automated implementation for #24" in body
+    assert "**Issue:** https://github.com/owner/repo/issues/24" in body
     assert "Closes #24" in body
-    # No issue-description or labels sections
+    # No inlined issue body, no labels
     assert "## Issue description" not in body
     assert "**Labels:**" not in body
 
 
 def test_build_pr_body_rich(monkeypatch):
-    """A rich issue includes description, diff stats, and labels."""
+    """A rich issue links to the issue, includes diff stats and labels; no full issue body."""
     diff_stat = " src/log.py | 10 +++++++---\n 1 file changed, 7 insertions(+), 3 deletions(-)"
 
     monkeypatch.setattr(
@@ -134,9 +135,9 @@ def test_build_pr_body_rich(monkeypatch):
         "run_command",
         lambda cmd, cwd=None, logger=None: _make_result(stdout=diff_stat),
     )
-    body = _build_pr_body(ISSUE_RICH, REPO_ROOT)
-    assert "## Issue description" in body
-    assert "verbose, debug, and trace levels" in body
+    body = _build_pr_body(ISSUE_RICH, REPO_ROOT, REPO)
+    assert "verbose, debug, and trace levels" not in body
+    assert "**Issue:** https://github.com/owner/repo/issues/24" in body
     assert "## Changes" in body
     assert "src/log.py" in body
     assert "`enhancement`" in body
@@ -144,8 +145,8 @@ def test_build_pr_body_rich(monkeypatch):
     assert "Closes #24" in body
 
 
-def test_build_pr_body_truncates_issue_and_diff_stat(monkeypatch):
-    """PR bodies should cap long issue text and very long diff --stat output."""
+def test_build_pr_body_truncates_diff_stat(monkeypatch):
+    """Long issue bodies are not copied; only diff --stat is line-capped in the PR."""
     issue = {
         "number": 24,
         "title": "Add multi-level verbose logging",
@@ -159,7 +160,6 @@ def test_build_pr_body_truncates_issue_and_diff_stat(monkeypatch):
         ]
     )
 
-    monkeypatch.setattr(pub_mod, "_MAX_ISSUE_BODY_CHARS", 40)
     monkeypatch.setattr(pub_mod, "_MAX_DIFF_STAT_LINES", 2)
     monkeypatch.setattr(pub_mod, "_MAX_PR_BODY_CHARS", 10_000)
     monkeypatch.setattr(
@@ -168,9 +168,9 @@ def test_build_pr_body_truncates_issue_and_diff_stat(monkeypatch):
         lambda cmd, cwd=None, logger=None: _make_result(stdout=diff_stat),
     )
 
-    body = _build_pr_body(issue, REPO_ROOT)
+    body = _build_pr_body(issue, REPO_ROOT, REPO)
 
-    assert "Issue description truncated" in body
+    assert "A" * 20 not in body
     assert "src/module_000.py" in body
     assert "src/module_001.py" in body
     assert "src/module_002.py" not in body
@@ -183,21 +183,23 @@ def test_build_pr_body_applies_final_body_cap(monkeypatch):
     issue = {
         "number": 24,
         "title": "Add multi-level verbose logging",
-        "body": "B" * 200,
+        "body": "B" * 2000,
     }
 
-    monkeypatch.setattr(pub_mod, "_MAX_ISSUE_BODY_CHARS", 200)
-    monkeypatch.setattr(pub_mod, "_MAX_PR_BODY_CHARS", 120)
+    long_diff = "\n".join([f" src/f{i:03d}.py | 1 +" for i in range(30)]) + "\n 30 files changed\n"
+    monkeypatch.setattr(pub_mod, "_MAX_PR_BODY_CHARS", 320)
+    monkeypatch.setattr(pub_mod, "_MAX_DIFF_STAT_LINES", 50)
     monkeypatch.setattr(
         pub_mod,
         "run_command",
-        lambda cmd, cwd=None, logger=None: _make_result(stdout=" src/log.py | 1 +\n"),
+        lambda cmd, cwd=None, logger=None: _make_result(stdout=long_diff),
     )
 
-    body = _build_pr_body(issue, REPO_ROOT)
+    body = _build_pr_body(issue, REPO_ROOT, REPO)
 
-    assert len(body) <= 120
-    assert "[PR body truncated to 120 characters.]" in body
+    assert "B" * 50 not in body
+    assert len(body) <= 320
+    assert "[PR body truncated to 320 characters.]" in body
     assert body.endswith("Closes #24")
 
 
@@ -215,7 +217,7 @@ def test_create_pr_retries_transient_failure(monkeypatch):
             )
         return _make_result(stdout=new_url + "\n")
 
-    monkeypatch.setattr(pub_mod, "_build_pr_body", lambda issue, repo_root: "short body")
+    monkeypatch.setattr(pub_mod, "_build_pr_body", lambda issue, repo_root, repo: "short body")
     monkeypatch.setattr(pub_mod, "_find_existing_pr", lambda repo, branch, repo_root: None)
     monkeypatch.setattr(pub_mod, "run_command_or_fail", fake_run_command_or_fail)
     monkeypatch.setattr(pub_mod.time, "sleep", lambda _: None)
@@ -242,7 +244,7 @@ def test_create_pr_does_not_retry_body_too_long(monkeypatch):
             ),
         )
 
-    monkeypatch.setattr(pub_mod, "_build_pr_body", lambda issue, repo_root: "short body")
+    monkeypatch.setattr(pub_mod, "_build_pr_body", lambda issue, repo_root, repo: "short body")
     monkeypatch.setattr(pub_mod, "_find_existing_pr", lambda repo, branch, repo_root: None)
     monkeypatch.setattr(pub_mod, "run_command_or_fail", fake_run_command_or_fail)
     monkeypatch.setattr(pub_mod.time, "sleep", lambda _: None)
