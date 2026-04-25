@@ -12,14 +12,21 @@ log = logging.getLogger(__name__)
 _CI_FIELDS = "name,state,bucket,link,workflow"
 
 
+def _is_no_checks_error(stderr: str) -> bool:
+    """Return True if the gh CLI error indicates no checks exist on the branch."""
+    return "no checks reported" in stderr.lower()
+
+
 def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
     """Poll CI status until completion. Returns (success, failure_output)."""
     ci_cfg = config.get("ci", {})
     timeout = ci_cfg.get("timeout", 600)
     poll_interval = ci_cfg.get("poll_interval", 30)
+    no_checks_grace = ci_cfg.get("no_checks_grace", 120)
 
     ci_start = time.monotonic()
     deadline = ci_start + timeout
+    no_checks_since: float | None = None
     poll_count = 0
     log.info("Waiting for CI (timeout=%ds)...", timeout)
 
@@ -29,16 +36,43 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
             logger=log,
         )
         poll_count += 1
+
+        no_checks = False
         if result.returncode != 0:
-            log.warning("Failed to check CI status: %s", result.stderr.strip())
+            if _is_no_checks_error(result.stderr):
+                no_checks = True
+            else:
+                log.warning("Failed to check CI status: %s", result.stderr.strip())
+                no_checks_since = None
+                time.sleep(poll_interval)
+                continue
+        else:
+            checks = json.loads(result.stdout)
+            if not checks:
+                no_checks = True
+
+        if no_checks:
+            now = time.monotonic()
+            if no_checks_since is None:
+                no_checks_since = now
+            waited = now - no_checks_since
+            if waited >= no_checks_grace:
+                elapsed = now - ci_start
+                log.info("[ci] completed in %.1fs (%d polls)", elapsed, poll_count)
+                log.info(
+                    "No CI checks found after %ds grace period — skipping CI.",
+                    no_checks_grace,
+                )
+                return True, None
+            log.debug(
+                "No CI checks yet (%.0fs / %ds grace)",
+                waited,
+                no_checks_grace,
+            )
             time.sleep(poll_interval)
             continue
 
-        checks = json.loads(result.stdout)
-
-        if not checks:
-            time.sleep(poll_interval)
-            continue
+        no_checks_since = None
 
         all_done = all(c.get("bucket") != "pending" for c in checks)
         if not all_done:
