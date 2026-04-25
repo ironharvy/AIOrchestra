@@ -65,7 +65,9 @@ def wait_for_ci(pr_url: str, config: PipelineConfig) -> FeedbackResult:
                 )
                 return True, None
             log.debug(
-                "No CI checks yet (%.0fs / %ds grace)", waited, no_checks_grace,
+                "No CI checks yet (%.0fs / %ds grace)",
+                waited,
+                no_checks_grace,
             )
             time.sleep(poll_interval)
             continue
