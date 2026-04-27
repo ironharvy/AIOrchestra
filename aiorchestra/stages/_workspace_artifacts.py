@@ -26,9 +26,8 @@ LOCAL_GIT_EXCLUDE_PATTERNS = (
     "node_modules/",
 )
 
-_ARTIFACT_DIR_NAMES = frozenset(
-    pattern.rstrip("/") for pattern in LOCAL_GIT_EXCLUDE_PATTERNS
-)
+_ARTIFACT_DIR_NAMES = frozenset(pattern.rstrip("/") for pattern in LOCAL_GIT_EXCLUDE_PATTERNS)
+
 
 class GitStatusError(RuntimeError):
     """Raised when git status/add cannot be inspected safely."""

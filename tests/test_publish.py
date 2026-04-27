@@ -297,9 +297,7 @@ def test_commit_changes_commits_only_publishable_paths(tmp_path: Path):
     committed_paths = _run_git(repo, "show", "--name-only", "--format=", "HEAD").stdout.splitlines()
     assert committed_paths == ["real.txt"]
     assert ".venv/lib/site/pkg.py" in _run_git(repo, "ls-files").stdout.splitlines()
-    assert _run_git(repo, "diff", "--name-only").stdout.splitlines() == [
-        ".venv/lib/site/pkg.py"
-    ]
+    assert _run_git(repo, "diff", "--name-only").stdout.splitlines() == [".venv/lib/site/pkg.py"]
 
 
 # ---------------------------------------------------------------------------
