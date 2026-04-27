@@ -11,8 +11,9 @@ from aiorchestra.stages._shell import (
     run_command_or_fail,
 )
 from aiorchestra.stages._workspace_artifacts import (
+    GitStatusError,
     ensure_local_git_excludes,
-    untrack_artifact_paths_from_index,
+    stage_publishable_changes,
 )
 from aiorchestra.stages.types import IssueData, PublishResult
 
@@ -80,28 +81,27 @@ def _commit_changes(issue: IssueData, repo_root: str) -> bool | None:
     commit, or None on a git error (caller should abort).
     """
     try:
-        result = run_command_or_fail(
-            ["git", "status", "--porcelain"],
-            error_msg="Failed to inspect git status",
-            cwd=repo_root,
-            logger=log,
-        )
-    except CommandError:
+        ensure_local_git_excludes(Path(repo_root))
+        staged_paths = stage_publishable_changes(repo_root)
+    except GitStatusError as exc:
+        log.error("%s", exc)
         return None
 
-    if not result.stdout.strip():
-        log.debug("No local changes to commit.")
+    if not staged_paths:
+        log.debug("No publishable local changes to commit.")
         return False
 
     log.info("Committing local changes for issue #%d", issue["number"])
     try:
-        ensure_local_git_excludes(Path(repo_root))
-        untrack_artifact_paths_from_index(repo_root)
         run_command_or_fail(
-            ["git", "add", "-A"], error_msg="git add failed", cwd=repo_root, logger=log
-        )
-        run_command_or_fail(
-            ["git", "commit", "-m", f"Fix #{issue['number']}: {issue['title']}"],
+            [
+                "git",
+                "commit",
+                "-m",
+                f"Fix #{issue['number']}: {issue['title']}",
+                "--",
+                *staged_paths,
+            ],
             error_msg="git commit failed",
             cwd=repo_root,
             logger=log,

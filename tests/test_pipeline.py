@@ -167,6 +167,80 @@ def test_validation_retry_uses_fix_validation_prompt(monkeypatch, tmp_path):
     ]
 
 
+def test_validation_loop_checks_baseline_once_per_loop(monkeypatch, tmp_path):
+    baseline_checks = []
+    validate_results = iter([(False, "lint broke"), (True, None)])
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 2},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline._has_changes", lambda repo_root: True)
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+    monkeypatch.setattr(
+        "aiorchestra.pipeline._has_preexisting_publishable_changes",
+        lambda repo_root: bool(baseline_checks.append(repo_root)) and False,
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.implement",
+        lambda issue, config, prompt_name="implement", error_text=None, repo_root=None, osint_context="", repo=None: (
+            InvokeResult(success=True)
+        ),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.validate",
+        lambda config, repo_root=None: next(validate_results),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.publish",
+        lambda repo, branch, issue, repo_root, pr_url=None: "https://example.test/pr/1",
+    )
+
+    pipeline = Pipeline(repo="owner/repo", label="claude", config={})
+
+    assert pipeline._process_issue({"number": 8, "title": "Check baseline"}) is True
+    assert baseline_checks == [str(tmp_path)]
+
+
+def test_dirty_agent_loop_baseline_aborts_before_implement(monkeypatch, tmp_path):
+    calls = []
+
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.prepare_environment",
+        lambda repo, branch, workspace: str(tmp_path),
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.load_config",
+        lambda path, repo_root=None: {
+            "ai": {"max_retries": 1},
+            "ci": {"enabled": False},
+            "review": {"enabled": False},
+        },
+    )
+    monkeypatch.setattr("aiorchestra.pipeline.enrich_issue", lambda issue, config: "")
+    monkeypatch.setattr(
+        "aiorchestra.pipeline._has_preexisting_publishable_changes",
+        lambda repo_root: True,
+    )
+    monkeypatch.setattr(
+        "aiorchestra.pipeline.implement",
+        lambda *args, **kwargs: calls.append(("implement",)) or InvokeResult(success=True),
+    )
+
+    pipeline = Pipeline(repo="owner/repo", label="claude", config={})
+
+    assert pipeline._process_issue({"number": 12, "title": "Dirty baseline"}) is False
+    assert calls == []
+
+
 def test_ci_fix_revalidates_and_republishes(monkeypatch, tmp_path):
     calls: list[tuple] = []
     validate_results = iter([(True, None), (True, None)])
@@ -322,6 +396,8 @@ def test_publish_refuses_empty_branch(monkeypatch, tmp_path):
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run)
+    monkeypatch.setattr(pub_mod, "ensure_local_git_excludes", lambda repo_root: None)
+    monkeypatch.setattr(pub_mod, "stage_publishable_changes", lambda repo_root: [])
 
     from aiorchestra.stages.publish import publish
 
@@ -355,6 +431,12 @@ def test_publish_aborts_on_git_error(monkeypatch, tmp_path):
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run)
+    monkeypatch.setattr(pub_mod, "ensure_local_git_excludes", lambda repo_root: None)
+    monkeypatch.setattr(
+        pub_mod,
+        "stage_publishable_changes",
+        lambda repo_root: (_ for _ in ()).throw(pub_mod.GitStatusError("fatal: not a git repo")),
+    )
 
     from aiorchestra.stages.publish import publish
 
