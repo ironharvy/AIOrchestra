@@ -15,6 +15,15 @@ def _mock_ensure_labels(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _mock_clean_agent_loop_baseline(monkeypatch):
+    """Most pipeline unit tests use plain temp dirs, not real git repos."""
+    monkeypatch.setattr(
+        "aiorchestra.pipeline._has_preexisting_publishable_changes",
+        lambda repo_root: False,
+    )
+
+
+@pytest.fixture(autouse=True)
 def _reset_sentry():
     """Ensure Sentry module state doesn't leak between tests."""
     import aiorchestra._sentry as _s

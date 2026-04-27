@@ -23,7 +23,8 @@ from aiorchestra.ai import (
 )
 from aiorchestra.ai._agents import KNOWN_AGENTS
 from aiorchestra.config import _deep_merge, load_config
-from aiorchestra.stages._shell import StageTimer, has_diff_from_main, run_command
+from aiorchestra.stages._shell import StageTimer, has_diff_from_main
+from aiorchestra.stages._workspace_artifacts import GitStatusError, has_publishable_changes
 from aiorchestra.stages.clarification import request_clarification
 from aiorchestra.stages.discover import discover_issues
 from aiorchestra.stages.osint import enrich_issue
@@ -60,13 +61,21 @@ def _fmt_duration(seconds: float) -> str:
 
 
 def _has_changes(repo_root: str) -> bool:
-    """Return True if the worktree has any uncommitted or staged changes."""
-    result = run_command(
-        ["git", "status", "--porcelain"],
-        cwd=repo_root,
-        logger=log,
-    )
-    return bool(result.stdout.strip())
+    """Return True if the worktree has publishable uncommitted or staged changes."""
+    try:
+        return has_publishable_changes(repo_root)
+    except GitStatusError as exc:
+        log.error("%s", exc)
+        return False
+
+
+def _has_preexisting_publishable_changes(repo_root: str) -> bool:
+    """Return True when an agent loop would start from a dirty publishable baseline."""
+    try:
+        return has_publishable_changes(repo_root)
+    except GitStatusError as exc:
+        log.error("%s", exc)
+        return True
 
 
 def _branch_has_existing_work(repo_root: str) -> bool:
@@ -572,6 +581,10 @@ class Pipeline:
         attempt_label: str = "Implementation",
     ) -> bool | str:
         """Returns True on success, False on failure, or _DEFERRED."""
+        if _has_preexisting_publishable_changes(ctx.repo_root):
+            log.error("Working tree has pre-existing publishable changes — aborting before agent")
+            return False
+
         validation_errors = error_text
         current_prompt = prompt_name
 

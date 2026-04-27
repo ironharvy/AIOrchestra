@@ -2,9 +2,16 @@
 
 import subprocess
 import types
+from pathlib import Path
 
 from aiorchestra.stages import publish as pub_mod
-from aiorchestra.stages.publish import _build_pr_body, _create_pr, _find_existing_pr, publish
+from aiorchestra.stages.publish import (
+    _build_pr_body,
+    _commit_changes,
+    _create_pr,
+    _find_existing_pr,
+    publish,
+)
 
 ISSUE = {"number": 24, "title": "Add multi-level verbose logging"}
 ISSUE_RICH = {
@@ -20,6 +27,22 @@ REPO_ROOT = "/tmp/fake-repo"
 
 def _make_result(returncode=0, stdout="", stderr=""):
     return types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def _run_git(tmp: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=tmp,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _init_repo(tmp: Path) -> None:
+    _run_git(tmp, "init", "-b", "main")
+    _run_git(tmp, "config", "user.email", "test@test.local")
+    _run_git(tmp, "config", "user.name", "AIOrchestra Test")
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +278,28 @@ def test_create_pr_does_not_retry_body_too_long(monkeypatch):
     assert len(calls) == 1
 
 
+def test_commit_changes_commits_only_publishable_paths(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "real.txt").write_text("ok\n")
+    artifact = repo / ".venv" / "lib" / "site" / "pkg.py"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("tracked artifact\n")
+    _run_git(repo, "add", "-A")
+    _run_git(repo, "commit", "-m", "initial")
+
+    (repo / "real.txt").write_text("changed\n")
+    artifact.write_text("modified artifact\n")
+
+    assert _commit_changes(ISSUE, str(repo)) is True
+
+    committed_paths = _run_git(repo, "show", "--name-only", "--format=", "HEAD").stdout.splitlines()
+    assert committed_paths == ["real.txt"]
+    assert ".venv/lib/site/pkg.py" in _run_git(repo, "ls-files").stdout.splitlines()
+    assert _run_git(repo, "diff", "--name-only").stdout.splitlines() == [".venv/lib/site/pkg.py"]
+
+
 # ---------------------------------------------------------------------------
 # publish — end-to-end with existing PR
 # ---------------------------------------------------------------------------
@@ -280,6 +325,8 @@ def test_publish_with_existing_pr_url_skips_creation(monkeypatch):
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run_command)
     monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run_command)
+    monkeypatch.setattr(pub_mod, "ensure_local_git_excludes", lambda repo_root: None)
+    monkeypatch.setattr(pub_mod, "stage_publishable_changes", lambda repo_root: ["file.py"])
 
     result = publish(REPO, BRANCH, ISSUE, REPO_ROOT, pr_url="https://github.com/owner/repo/pull/25")
     assert result == "https://github.com/owner/repo/pull/25"
@@ -308,6 +355,8 @@ def test_publish_without_pr_url_detects_existing(monkeypatch):
 
     monkeypatch.setattr(pub_mod, "run_command", fake_run_command)
     monkeypatch.setattr("aiorchestra.stages._shell.run_command", fake_run_command)
+    monkeypatch.setattr(pub_mod, "ensure_local_git_excludes", lambda repo_root: None)
+    monkeypatch.setattr(pub_mod, "stage_publishable_changes", lambda repo_root: ["file.py"])
 
     result = publish(REPO, BRANCH, ISSUE, REPO_ROOT)
     assert result == existing_url

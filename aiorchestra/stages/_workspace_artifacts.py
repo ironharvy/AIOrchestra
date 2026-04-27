@@ -1,15 +1,16 @@
 """Workspace paths that the orchestrator creates and must not land in agent commits.
 
-Local `.git/info/exclude` keeps them untracked. If they were ever staged or
-tracked, `untrack_artifact_paths` removes them from the index before publish.
+Local `.git/info/exclude` keeps untracked copies out of status. Publish uses
+filtered path staging so the orchestrator does not forcibly remove target-repo
+paths that happen to match common artifact names.
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from aiorchestra.stages._shell import run_command
+from aiorchestra.stages._shell import CommandError, run_command, run_command_or_fail
 
 log = logging.getLogger(__name__)
 
@@ -25,16 +26,11 @@ LOCAL_GIT_EXCLUDE_PATTERNS = (
     "node_modules/",
 )
 
-# Top-level (or well-known) paths passed to `git rm -r --cached` — no trailing slash
-_GIT_RM_TOP_LEVEL = (
-    ".venv",
-    "venv",
-    "node_modules",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".tox",
-)
+_ARTIFACT_DIR_NAMES = frozenset(pattern.rstrip("/") for pattern in LOCAL_GIT_EXCLUDE_PATTERNS)
+
+
+class GitStatusError(RuntimeError):
+    """Raised when git status/add cannot be inspected safely."""
 
 
 def ensure_local_git_excludes(repo_dir: Path) -> None:
@@ -61,47 +57,92 @@ def ensure_local_git_excludes(repo_dir: Path) -> None:
     log.info("Added %d local git exclude patterns in %s", len(missing), exclude_file)
 
 
-def _pycache_dirs_in_index(repo_root: str) -> set[str]:
-    result = run_command(
-        ["git", "ls-files"],
-        cwd=repo_root,
-        logger=log,
-    )
-    if result.returncode != 0 or not result.stdout.strip():
-        return set()
-    dirs: set[str] = set()
-    for path in result.stdout.splitlines():
-        if "__pycache__" not in path:
-            continue
-        parts = path.split("/")
-        for i, segment in enumerate(parts):
-            if segment == "__pycache__":
-                dirs.add("/".join(parts[: i + 1]))
-    return dirs
+def _status_paths_from_porcelain_z(output: str) -> list[str]:
+    """Return all paths mentioned by `git status --porcelain -z`.
 
-
-def _untrack_pycache_paths(repo_root: str) -> None:
-    for d in sorted(_pycache_dirs_in_index(repo_root)):
-        run_command(
-            ["git", "rm", "-r", "--cached", "--ignore-unmatch", "--", d],
-            cwd=repo_root,
-            check=False,
-            logger=log,
-        )
-
-
-def untrack_artifact_paths_from_index(repo_root: str) -> None:
-    """Remove orchestration artifacts from the git index; leaves working tree on disk.
-
-    Call this before `git add -A` so venv, caches, and `__pycache__` never
-    become part of the commit. Untracked copies stay ignored via
-    :func:`ensure_local_git_excludes`.
+    Rename/copy records contain two NUL-delimited paths. We keep both so
+    `git add -A -- <paths>` can stage the old deletion and the new path.
     """
-    for name in _GIT_RM_TOP_LEVEL:
-        run_command(
-            ["git", "rm", "-r", "--cached", "--ignore-unmatch", "--", name],
+    entries = output.split("\0")
+    paths: list[str] = []
+    i = 0
+    while i < len(entries):
+        entry = entries[i]
+        i += 1
+        if not entry:
+            continue
+        if len(entry) < 4:
+            continue
+
+        status = entry[:2]
+        path = entry[3:]
+        if path:
+            paths.append(path)
+
+        if status[0] in {"R", "C"} or status[1] in {"R", "C"}:
+            if i < len(entries) and entries[i]:
+                paths.append(entries[i])
+            i += 1
+
+    return paths
+
+
+def is_workspace_artifact_path(path: str) -> bool:
+    """Return True when *path* lives under an orchestrator-created artifact dir."""
+    return any(part in _ARTIFACT_DIR_NAMES for part in PurePosixPath(path).parts)
+
+
+def publishable_status_paths(repo_root: str) -> list[str]:
+    """Return dirty worktree paths that are safe to include in an agent commit."""
+    try:
+        result = run_command_or_fail(
+            ["git", "status", "--porcelain", "-z", "--untracked-files=all"],
+            error_msg="Failed to inspect git status",
             cwd=repo_root,
-            check=False,
             logger=log,
         )
-    _untrack_pycache_paths(repo_root)
+    except CommandError as exc:
+        raise GitStatusError(str(exc)) from exc
+
+    paths = _status_paths_from_porcelain_z(result.stdout)
+    publishable = [path for path in paths if not is_workspace_artifact_path(path)]
+    return list(dict.fromkeys(publishable))
+
+
+def has_publishable_changes(repo_root: str) -> bool:
+    """Return True if the worktree has non-artifact changes."""
+    return bool(publishable_status_paths(repo_root))
+
+
+def stage_publishable_changes(repo_root: str) -> list[str]:
+    """Stage only non-artifact dirty paths.
+
+    Returns the paths that have staged changes after filtering.
+    """
+    paths = publishable_status_paths(repo_root)
+    if not paths:
+        log.debug("No publishable local changes to stage.")
+        return []
+
+    try:
+        run_command_or_fail(
+            ["git", "add", "-A", "--", *paths],
+            error_msg="git add failed",
+            cwd=repo_root,
+            logger=log,
+        )
+        diff = run_command(
+            ["git", "diff", "--cached", "--quiet", "--", *paths],
+            cwd=repo_root,
+            logger=log,
+        )
+    except CommandError as exc:
+        raise GitStatusError(str(exc)) from exc
+
+    if diff.returncode not in {0, 1}:
+        detail = diff.stderr.strip() or diff.stdout.strip() or "git diff failed"
+        raise GitStatusError(f"Failed to inspect staged diff: {detail}")
+
+    if diff.returncode == 0:
+        return []
+    return paths
