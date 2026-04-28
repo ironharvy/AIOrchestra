@@ -24,6 +24,10 @@ _MAX_PR_BODY_CHARS = 60_000
 _PR_CREATE_ATTEMPTS = 2
 _PR_CREATE_RETRY_DELAY_SECONDS = 2.0
 _NON_RETRYABLE_PR_ERRORS = ("body is too long",)
+_DUPLICATE_PR_ERROR_PATTERNS = (
+    "a pull request for branch",
+    "already exists",
+)
 _TRANSIENT_PR_ERROR_PATTERNS = (
     "timeout",
     "timed out",
@@ -130,7 +134,23 @@ def _push_branch(branch: str, repo_root: str) -> bool:
 def _find_existing_pr(repo: str, branch: str, repo_root: str) -> str | None:
     """Return the URL of an open PR for *branch*, or ``None`` if none exists."""
     result = run_command(
-        ["gh", "pr", "view", "--repo", repo, "--head", branch, "--json", "url", "--jq", ".url"],
+        [
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--head",
+            branch,
+            "--state",
+            "open",
+            "--limit",
+            "1",
+            "--json",
+            "url",
+            "--jq",
+            ".[0].url // empty",
+        ],
         cwd=repo_root,
         logger=log,
     )
@@ -185,6 +205,12 @@ def _is_transient_pr_error(detail: str) -> bool:
     if any(pattern in lowered for pattern in _NON_RETRYABLE_PR_ERRORS):
         return False
     return any(pattern in lowered for pattern in _TRANSIENT_PR_ERROR_PATTERNS)
+
+
+def _is_duplicate_pr_error(detail: str) -> bool:
+    """Return True when GitHub reports a PR already exists for this branch."""
+    lowered = detail.lower()
+    return any(pattern in lowered for pattern in _DUPLICATE_PR_ERROR_PATTERNS)
 
 
 def _build_pr_body(issue: IssueData, repo_root: str, repo: str) -> str:
@@ -259,6 +285,13 @@ def _create_pr(repo: str, branch: str, issue: IssueData, repo_root: str) -> Publ
             return pr_url
         except CommandError as exc:
             detail = exc.result.stderr.strip() or exc.result.stdout.strip() or str(exc)
+            if _is_duplicate_pr_error(detail):
+                existing = _find_existing_pr(repo, branch, repo_root)
+                if existing:
+                    log.info("PR already exists after create failure: %s", existing)
+                    return existing
+                return None
+
             if attempt >= _PR_CREATE_ATTEMPTS or not _is_transient_pr_error(detail):
                 return None
 

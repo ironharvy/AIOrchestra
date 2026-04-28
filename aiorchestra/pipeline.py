@@ -702,6 +702,14 @@ class Pipeline:
                 if not pr_url:
                     return None
 
+        log.info("%s final check after remediation", stage_name)
+        ok, feedback = check_fn(pr_url)
+        if ok:
+            return pr_url
+        if feedback:
+            log.info("%s final feedback (first 500 chars): %.500s", stage_name, feedback)
+            log.debug("%s final full feedback: %s", stage_name, feedback)
+
         log.error("%s failed after %d attempts", stage_name, ctx.max_retries)
         return None
 
