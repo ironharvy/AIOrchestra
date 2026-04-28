@@ -1,0 +1,16 @@
+---
+description: Python environment selection
+alwaysApply: true
+---
+
+# Python Environment
+
+Before running Python, pytest, pip, ruff, mypy, or other Python tooling:
+
+1. Check whether `.venv/bin/python` exists.
+2. If it exists, run commands through `.venv/bin/python`, for example:
+   - `.venv/bin/python -m pytest`
+   - `.venv/bin/python -m pip`
+   - `.venv/bin/python -m ruff`
+3. Do not assume `python`, `python3`, or globally installed tools are the project environment.
+4. If `.venv` exists but the needed tool is missing, report that instead of silently using a global interpreter.
