@@ -36,5 +36,9 @@ class CodexProvider(CLIProvider):
         if model:
             cmd.extend(["--model", model])
 
+        effort = self._config.get("effort")
+        if effort:
+            cmd.extend(["-c", f"model_reasoning_effort={effort}"])
+
         cmd.append(prompt)
         return cmd

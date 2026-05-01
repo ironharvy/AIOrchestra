@@ -52,4 +52,8 @@ class ClaudeCodeProvider(CLIProvider):
         if model:
             cmd.extend(["--model", model])
 
+        effort = self._config.get("effort")
+        if effort:
+            cmd.extend(["--effort", effort])
+
         return cmd

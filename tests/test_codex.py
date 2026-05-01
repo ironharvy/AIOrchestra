@@ -85,6 +85,38 @@ def test_codex_unknown_approval_mode(monkeypatch):
     assert "--sandbox" not in captured["cmd"]
 
 
+def test_codex_effort_flag(monkeypatch):
+    """``effort`` config maps to ``-c model_reasoning_effort=<level>``."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
+
+    _make_provider(effort="high").run("hello")
+
+    assert "-c" in captured["cmd"]
+    idx = captured["cmd"].index("-c")
+    assert captured["cmd"][idx + 1] == "model_reasoning_effort=high"
+
+
+def test_codex_no_effort_flag_when_unset(monkeypatch):
+    """Without ``effort`` configured the override is omitted."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("aiorchestra.ai._cli.subprocess.run", fake_run)
+
+    _make_provider().run("hello")
+
+    assert not any(arg.startswith("model_reasoning_effort=") for arg in captured["cmd"])
+
+
 def test_codex_failure(monkeypatch):
     """Non-zero exit code results in failure."""
 
