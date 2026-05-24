@@ -4,13 +4,23 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 DEFAULT_AGENT_FAMILY = "claude"
-KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "gemini", "jules", "opencode")
+KNOWN_AGENTS: tuple[str, ...] = (
+    "claude",
+    "codex",
+    "cursor",
+    "gemini",
+    "antigravity",
+    "jules",
+    "opencode",
+)
 
 # Maps agent family names to the provider id used by the registry.
 _FAMILY_TO_PROVIDER: dict[str, str] = {
     "claude": "claude-code",
     "codex": "codex",
+    "cursor": "cursor",
     "gemini": "gemini",
+    "antigravity": "antigravity",
     "jules": "jules",
     "opencode": "opencode",
 }

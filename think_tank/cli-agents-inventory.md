@@ -10,6 +10,20 @@ Track the landscape of terminal/CLI coding agents so we can decide which to
 add as providers. This is an inventory, not an ADR — adding any of these is a
 follow-up decision per agent.
 
+## Implementation status (2026-05-24)
+
+Priority set by maintainer: **(1) Antigravity, (2) Cursor, (3) Freebuff**.
+
+| Agent | Provider id | Binary | Status |
+|---|---|---|---|
+| Antigravity CLI | `antigravity` | `agy` | **Added** — `_antigravity.py`, registry, tests |
+| Cursor CLI | `cursor` | `cursor-agent` | **Added** — `_cursor.py`, registry, tests |
+| Freebuff | — | `freebuff` | **Blocked** — no documented non-interactive mode (see below) |
+
+Both new providers extend `CLIProvider` and add no Python runtime deps.
+Note: `antigravity` is added as a **new** provider; the Gemini-CLI retirement
+migration (below) remains a separate open item.
+
 ## Currently supported
 
 From `aiorchestra/ai/_registry.py` and `_agents.py`:
@@ -45,7 +59,7 @@ registry + `__init__` wiring, an `available()` check, and tests.
 | **Cursor CLI** | Cursor (Anysphere) | proprietary | `cursor-agent` | `cursor-agent -p "…"` | Clean print mode for CI. Reads `AGENTS.md`/`CLAUDE.md` + `.cursor/rules`, supports MCP. Install: `curl https://cursor.com/install -fsSL \| bash`. Beta. |
 | **Grok Build** (official) | xAI | proprietary | `grok` | plan/exec mode (confirm flag) | **Gated**: SuperGrok Heavy (~$300/mo) at time of writing. Install: `curl -fsSL https://x.ai/cli/install.sh \| bash`. Subagents, Grok 4.3 beta, 2M ctx. |
 | **grok-cli** (community alt) | superagent-ai / vibe-kit | OSS (MIT) | `grok` | `grok --prompt "…"` | Unaffiliated with xAI; thin wrapper over the Grok API. Not gated — easier first integration than official Grok Build. `npm @vibe-kit/grok-cli`. |
-| **Codebuff / Freebuff** | CodebuffAI | OSS | `codebuff` / `freebuff` | print mode + SDK | "freebuff" = free, **ad-supported** edition (text ads printed in CLI). Multi-subagent. Defaults to DeepSeek/Kimi/MiniMax. `npx freebuff`. |
+| **Codebuff / Freebuff** | CodebuffAI | OSS | `codebuff` / `freebuff` | **none documented** (interactive TUI only) | "freebuff" = free, **ad-supported** edition (text ads printed in CLI). Multi-subagent. Defaults to DeepSeek/Kimi/MiniMax. `npm i -g freebuff`. **Blocker:** both the Freebuff and Codebuff READMEs document only the interactive TUI — no `-p`/`--print`/`run`/`exec` one-shot flag — so it does not fit `CLIProvider`. A programmatic path exists via the `@codebuff/sdk` (TypeScript), which is a different integration shape than shelling out to a binary. |
 
 ## Tier 2 — high-priority, well-established (non-interactive mode exists)
 
@@ -81,9 +95,10 @@ replaced it with **Antigravity CLI** (part of Antigravity 2.0). Gemini CLI
 reportedly **stops serving free/Pro/Ultra accounts on 2026-06-18**.
 
 Action: our existing `gemini` provider (binary `gemini`) likely needs to
-migrate to the `antigravity` binary before that date. Track this **separately**
-from the "add new agents" work — it is maintenance of a shipped provider, not
-a new addition.
+migrate to the `agy` (Antigravity) binary before that date. Track this
+**separately** from the "add new agents" work — it is maintenance of a shipped
+provider, not a new addition. Note the new `antigravity` provider added in this
+branch is a *distinct* entry; it does not retire or replace `gemini`.
 
 ## Sourcing caveats
 
