@@ -22,6 +22,7 @@ from aiorchestra.ai._cli import CLIProvider
 from aiorchestra.ai._codex import CodexProvider
 from aiorchestra.ai._cursor import CursorProvider
 from aiorchestra.ai._gemini import GeminiProvider
+from aiorchestra.ai._goose import GooseProvider
 from aiorchestra.ai._jules import JulesProvider
 from aiorchestra.ai._ollama import OllamaProvider
 from aiorchestra.ai._opencode import OpenCodeProvider
@@ -37,6 +38,7 @@ __all__ = [
     "CursorProvider",
     "DEFAULT_AGENT_FAMILY",
     "GeminiProvider",
+    "GooseProvider",
     "InvokeResult",
     "JulesProvider",
     "KNOWN_AGENTS",

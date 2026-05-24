@@ -13,13 +13,14 @@ follow-up decision per agent.
 ## Implementation status (2026-05-24)
 
 Priority set by maintainer: **(1) Antigravity, (2) Cursor, (3) Freebuff**;
-**Aider** added afterwards.
+**Aider** and **Goose** added afterwards.
 
 | Agent | Provider id | Binary | Status |
 |---|---|---|---|
 | Antigravity CLI | `antigravity` | `agy` | **Added** — `_antigravity.py`, registry, tests |
 | Cursor CLI | `cursor` | `cursor-agent` | **Added** — `_cursor.py`, registry, tests |
 | Aider | `aider` | `aider` | **Added** — `_aider.py`, registry, tests; auto-commit disabled by default (see Tier 2) |
+| Goose | `goose` | `goose` | **Added** — `_goose.py`, registry, tests; `--no-session` by default, LLM backend via `llm_provider` (see Tier 2) |
 | Freebuff | — | `freebuff` | **Skipped** — no documented non-interactive mode + self-downloading npm stub (see below) |
 
 All new providers extend `CLIProvider` and add no Python runtime deps.
@@ -69,7 +70,7 @@ registry + `__init__` wiring, an `available()` check, and tests.
 | Tool | Maker | OSS? | Binary | Non-interactive invoke | Notes |
 |---|---|---|---|---|---|
 | **Aider** | Aider-AI | OSS | `aider` | `aider --message "…" --yes-always` | **Added.** The original terminal pair-programmer. Differs from the others: it auto-commits to git by default. Our provider disables that (`--no-auto-commits --no-dirty-commits`) so the `publish` stage owns committing; set `auto_commits: true` to opt back in. Also uses `--no-pretty --no-stream` for clean stdout. Model-agnostic. |
-| **Goose** | Block | OSS (Apache-2) | `goose` | `goose run -t "…"` | MCP-native from day one; model-agnostic. |
+| **Goose** | Block | OSS (Apache-2) | `goose` | `goose run --no-session -t "…"` | **Added.** MCP-native; model-agnostic. Headless `goose run`; we pass `--no-session` by default so it doesn't drop session files in the workspace (`session: true` to keep). Goose's own `--provider` (LLM backend) is set via the `llm_provider` config key to avoid clashing with AIOrchestra's `provider` selector; `--model` as usual. |
 | **Crush** | Charmbracelet | OSS (Go) | `crush` | `crush run "…"` | TUI-first, LSP-enhanced, mid-session model switching. |
 | **Amp** | Sourcegraph | proprietary | `amp` | `amp -x "…"` | npm `@sourcegraph/amp`. "Deep mode" extended reasoning. CLI rebuilt 2026. |
 | **Qwen Code** | Alibaba / QwenLM | OSS | `qwen` | `qwen -p "…"` | Gemini-CLI fork tuned for Qwen models; OpenAI/Anthropic/Gemini-compatible APIs. |
@@ -117,13 +118,11 @@ implementation time.
 
 ## Suggested next steps
 
-1. **Done:** Antigravity, Cursor, Aider providers added.
-2. Remaining easy win with a clean non-interactive mode: **Goose**
-   (`goose run -t "…"`).
-3. For Grok, start with the community **grok-cli** (not gated) rather than
+1. **Done:** Antigravity, Cursor, Aider, Goose providers added.
+2. For Grok, start with the community **grok-cli** (not gated) rather than
    official Grok Build.
-4. Keep the **Gemini → Antigravity** retirement as a separate future task
+3. Keep the **Gemini → Antigravity** retirement as a separate future task
    (Gemini stays for now).
-5. For each chosen agent, follow the "Adding new AI providers" checklist in
+4. For each chosen agent, follow the "Adding new AI providers" checklist in
    CLAUDE.md (`_<provider>.py` → registry → `__init__` → `available()` →
    tests).

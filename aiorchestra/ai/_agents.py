@@ -11,6 +11,7 @@ KNOWN_AGENTS: tuple[str, ...] = (
     "cursor",
     "gemini",
     "antigravity",
+    "goose",
     "jules",
     "opencode",
 )
@@ -23,6 +24,7 @@ _FAMILY_TO_PROVIDER: dict[str, str] = {
     "cursor": "cursor",
     "gemini": "gemini",
     "antigravity": "antigravity",
+    "goose": "goose",
     "jules": "jules",
     "opencode": "opencode",
 }
