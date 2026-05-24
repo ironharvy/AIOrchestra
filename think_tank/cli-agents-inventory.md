@@ -12,17 +12,20 @@ follow-up decision per agent.
 
 ## Implementation status (2026-05-24)
 
-Priority set by maintainer: **(1) Antigravity, (2) Cursor, (3) Freebuff**.
+Priority set by maintainer: **(1) Antigravity, (2) Cursor, (3) Freebuff**;
+**Aider** added afterwards.
 
 | Agent | Provider id | Binary | Status |
 |---|---|---|---|
 | Antigravity CLI | `antigravity` | `agy` | **Added** — `_antigravity.py`, registry, tests |
 | Cursor CLI | `cursor` | `cursor-agent` | **Added** — `_cursor.py`, registry, tests |
-| Freebuff | — | `freebuff` | **Blocked** — no documented non-interactive mode (see below) |
+| Aider | `aider` | `aider` | **Added** — `_aider.py`, registry, tests; auto-commit disabled by default (see Tier 2) |
+| Freebuff | — | `freebuff` | **Skipped** — no documented non-interactive mode + self-downloading npm stub (see below) |
 
-Both new providers extend `CLIProvider` and add no Python runtime deps.
+All new providers extend `CLIProvider` and add no Python runtime deps.
 Note: `antigravity` is added as a **new** provider; the Gemini-CLI retirement
-migration (below) remains a separate open item.
+migration (below) remains a separate open item — Gemini stays for now and will
+be removed eventually (maintainer decision, 2026-05-24).
 
 ## Currently supported
 
@@ -65,7 +68,7 @@ registry + `__init__` wiring, an `available()` check, and tests.
 
 | Tool | Maker | OSS? | Binary | Non-interactive invoke | Notes |
 |---|---|---|---|---|---|
-| **Aider** | Aider-AI | OSS | `aider` | `aider --message "…" --yes` | The original terminal pair-programmer; best git integration. Model-agnostic. |
+| **Aider** | Aider-AI | OSS | `aider` | `aider --message "…" --yes-always` | **Added.** The original terminal pair-programmer. Differs from the others: it auto-commits to git by default. Our provider disables that (`--no-auto-commits --no-dirty-commits`) so the `publish` stage owns committing; set `auto_commits: true` to opt back in. Also uses `--no-pretty --no-stream` for clean stdout. Model-agnostic. |
 | **Goose** | Block | OSS (Apache-2) | `goose` | `goose run -t "…"` | MCP-native from day one; model-agnostic. |
 | **Crush** | Charmbracelet | OSS (Go) | `crush` | `crush run "…"` | TUI-first, LSP-enhanced, mid-session model switching. |
 | **Amp** | Sourcegraph | proprietary | `amp` | `amp -x "…"` | npm `@sourcegraph/amp`. "Deep mode" extended reasoning. CLI rebuilt 2026. |
@@ -114,12 +117,13 @@ implementation time.
 
 ## Suggested next steps
 
-1. Pick a first batch to implement. Recommended for breadth + low friction:
-   **Cursor CLI**, **Aider**, **Goose** (all have clean non-interactive modes
-   and broad adoption).
-2. For Grok, start with the community **grok-cli** (not gated) rather than
+1. **Done:** Antigravity, Cursor, Aider providers added.
+2. Remaining easy win with a clean non-interactive mode: **Goose**
+   (`goose run -t "…"`).
+3. For Grok, start with the community **grok-cli** (not gated) rather than
    official Grok Build.
-3. Open a separate task for the **Gemini → Antigravity** migration.
-4. For each chosen agent, follow the "Adding new AI providers" checklist in
+4. Keep the **Gemini → Antigravity** retirement as a separate future task
+   (Gemini stays for now).
+5. For each chosen agent, follow the "Adding new AI providers" checklist in
    CLAUDE.md (`_<provider>.py` → registry → `__init__` → `available()` →
    tests).

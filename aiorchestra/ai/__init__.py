@@ -14,6 +14,7 @@ from aiorchestra.ai._agents import (
     provider_for_agent,
     resolve_agent,
 )
+from aiorchestra.ai._aider import AiderProvider
 from aiorchestra.ai._antigravity import AntigravityProvider
 from aiorchestra.ai._base import AIProvider, InvokeResult, _parse_clarification
 from aiorchestra.ai._claude_code import ClaudeCodeProvider
@@ -28,6 +29,7 @@ from aiorchestra.ai._registry import create_provider
 
 __all__ = [
     "AIProvider",
+    "AiderProvider",
     "AntigravityProvider",
     "CLIProvider",
     "ClaudeCodeProvider",

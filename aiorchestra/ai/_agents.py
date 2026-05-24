@@ -5,6 +5,7 @@ from typing import Any
 
 DEFAULT_AGENT_FAMILY = "claude"
 KNOWN_AGENTS: tuple[str, ...] = (
+    "aider",
     "claude",
     "codex",
     "cursor",
@@ -16,6 +17,7 @@ KNOWN_AGENTS: tuple[str, ...] = (
 
 # Maps agent family names to the provider id used by the registry.
 _FAMILY_TO_PROVIDER: dict[str, str] = {
+    "aider": "aider",
     "claude": "claude-code",
     "codex": "codex",
     "cursor": "cursor",

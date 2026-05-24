@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from aiorchestra.ai._aider import AiderProvider
 from aiorchestra.ai._antigravity import AntigravityProvider
 from aiorchestra.ai._base import AIProvider
 from aiorchestra.ai._claude_code import ClaudeCodeProvider
@@ -13,6 +14,7 @@ from aiorchestra.ai._ollama import OllamaProvider
 from aiorchestra.ai._opencode import OpenCodeProvider
 
 _PROVIDERS: dict[str, type[AIProvider]] = {
+    "aider": AiderProvider,
     "antigravity": AntigravityProvider,
     "claude-code": ClaudeCodeProvider,
     "codex": CodexProvider,
