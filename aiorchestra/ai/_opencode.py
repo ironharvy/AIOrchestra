@@ -21,7 +21,9 @@ class OpenCodeProvider(CLIProvider):
         if self._config.get("dangerously-skip-permissions", True):
             cmd.append("--dangerously-skip-permissions")
 
-        model = self._config.get("model", "openai/gpt-5.4")
+        model = self._config.get("model") or "openai/gpt-5.4"
+        if model == "default":
+            model = "openai/gpt-5.4"
         if model:
             cmd.extend(["--model", model])
 
