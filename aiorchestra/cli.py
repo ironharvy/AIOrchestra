@@ -60,10 +60,66 @@ examples:
   aiorchestra dispatch --owner @me
 
   # Create the AIOrchestra issue labels in one or more repos
-  aiorchestra setup-labels owner/repo owner/other-repo
+  aiorchestra setup-labels owner/repo owner/other-repo"""
 
-Logs stream to stderr; pass -v/-vv/-vvv for more detail or --log-file to tee
-them to a file. See the project README for configuration and agent setup."""
+# Shared help sections appended to each command's epilog so that `-h` on any
+# subcommand documents the full set of supported knobs, not just its flags.
+_LOGGING_HELP = """\
+logging & verbosity:
+  Logs stream to stderr. The default level is WARNING; add -v to raise it:
+    (none)   WARNING  errors and warnings only
+    -v       INFO     high-level progress (per issue, per stage)
+    -vv      DEBUG    detailed internal state
+    -vvv     DEBUG + unmute noisy third-party libraries (httpx, urllib3, …)
+  Output is colored text on a terminal and newline-delimited JSON when piped
+  or redirected. --log-file additionally tees structured JSON logs to a file
+  (its parent directories are created automatically)."""
+
+_ENV_HELP = """\
+environment variables:
+  LOG_LEVEL                  Force a log level (DEBUG/INFO/WARNING/ERROR),
+                             overriding any -v/-vv/-vvv flags.
+  LOG_FORMAT                 Force stderr format: 'json' or 'text'
+                             (default: auto — text on a TTY, JSON otherwise).
+  AIORCHESTRA_LOG_FILE       Default --log-file path (LOG_FILE also honored).
+  SENTRY_DSN                 Enable Sentry error reporting (or set sentry.dsn).
+  SENTRY_ENVIRONMENT         Sentry environment tag (default: production).
+  SENTRY_TRACES_SAMPLE_RATE  Sentry trace sampling rate, 0.0–1.0.
+
+configuration:
+  Settings merge in order: built-in defaults, the target repo's
+  .aiorchestra/config.yaml, then --config (or an auto-detected
+  ./aiorchestra.yaml). Use --dry-run to print the resolved plan without
+  touching any repository."""
+
+
+def _command_epilog(examples: str) -> str:
+    """Compose a subcommand epilog from its examples plus the shared sections."""
+    return f"{examples}\n\n{_LOGGING_HELP}\n\n{_ENV_HELP}"
+
+
+def _add_logging_args(parser: argparse.ArgumentParser, *, default_log_file: str) -> None:
+    """Add the --verbose/--log-file flags shared by every subcommand."""
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="count",
+        default=0,
+        help=(
+            "Increase log verbosity (repeatable): -v INFO, -vv DEBUG, "
+            "-vvv DEBUG + third-party libs. Default is WARNING. "
+            "Overridden by $LOG_LEVEL. See 'logging & verbosity' below."
+        ),
+    )
+    parser.add_argument(
+        "--log-file",
+        default=default_log_file,
+        metavar="PATH",
+        help=(
+            "Tee structured JSON logs to this file in addition to stderr "
+            "(default: %(default)s). Overrides $AIORCHESTRA_LOG_FILE / $LOG_FILE."
+        ),
+    )
 
 
 def _watch_loop(fn: Callable[[], int], poll_interval: int) -> int:
@@ -101,7 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aiorchestra",
         description=_MAIN_DESCRIPTION,
-        epilog=_MAIN_EPILOG,
+        epilog=_command_epilog(_MAIN_EPILOG),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -119,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Run the full discover -> implement -> validate -> review -> publish "
             "pipeline against the issues in a single repository."
         ),
-        epilog=(
+        epilog=_command_epilog(
             "examples:\n"
             "  aiorchestra run --repo owner/repo\n"
             "  aiorchestra run --repo owner/repo --issue 42 --label claude --dry-run\n"
@@ -143,10 +199,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--issue", type=int, default=None, metavar="N", help="Process only this issue number"
     )
-    run.add_argument("--config", default=None, help="Path to config YAML")
+    run.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        help="Path to a config YAML (default: auto-detect ./aiorchestra.yaml)",
+    )
     run.add_argument(
         "--workspace",
         default=None,
+        metavar="DIR",
         help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)",
     )
     run.add_argument("--dry-run", action="store_true", help="Show plan without executing")
@@ -156,26 +218,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip implementation — only validate and review existing work on the branch",
     )
     run.add_argument(
-        "--verbose",
-        "-v",
-        action="count",
-        default=0,
-        help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
-    )
-    run.add_argument(
-        "--log-file",
-        default=".log/aiorchestra-run.log",
-        help=("Write logs to this file in addition to stderr. Overrides $AIORCHESTRA_LOG_FILE."),
-    )
-    run.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
     )
     run.add_argument(
         "--poll-interval",
         type=int,
         default=None,
+        metavar="SECONDS",
         help="Seconds between scans in watch mode (default: 300)",
     )
+    _add_logging_args(run, default_log_file=".log/aiorchestra-run.log")
 
     dispatch = sub.add_parser(
         "dispatch",
@@ -184,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Discover every repository owned by --owner, then run the pipeline "
             "against each one that has open 'aiorchestra'-labeled issues."
         ),
-        epilog=(
+        epilog=_command_epilog(
             "examples:\n"
             "  aiorchestra dispatch\n"
             "  aiorchestra dispatch --owner myorg --dry-run\n"
@@ -198,25 +250,19 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="OWNER",
         help="GitHub owner to scan (default: @me, i.e. the authenticated user)",
     )
-    dispatch.add_argument("--config", default=None, help="Path to config YAML")
+    dispatch.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        help="Path to a config YAML (default: auto-detect ./aiorchestra.yaml)",
+    )
     dispatch.add_argument(
         "--workspace",
         default=None,
+        metavar="DIR",
         help="Directory for cloned repos (default: ~/.aiorchestra/workspaces)",
     )
     dispatch.add_argument("--dry-run", action="store_true", help="Show plan without executing")
-    dispatch.add_argument(
-        "--verbose",
-        "-v",
-        action="count",
-        default=0,
-        help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
-    )
-    dispatch.add_argument(
-        "--log-file",
-        default=".log/aiorchestra-dispatch.log",
-        help=("Write logs to this file in addition to stderr. Overrides $AIORCHESTRA_LOG_FILE."),
-    )
     dispatch.add_argument(
         "--watch", action="store_true", help="Run continuously, polling for new issues"
     )
@@ -224,8 +270,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--poll-interval",
         type=int,
         default=None,
+        metavar="SECONDS",
         help="Seconds between scans in watch mode (default: 300)",
     )
+    _add_logging_args(dispatch, default_log_file=".log/aiorchestra-dispatch.log")
 
     setup = sub.add_parser(
         "setup-labels",
@@ -235,7 +283,7 @@ def build_parser() -> argparse.ArgumentParser:
             "(e.g. 'aiorchestra' and the per-agent labels) in each given repo. "
             "Existing labels are left untouched."
         ),
-        epilog=(
+        epilog=_command_epilog(
             "examples:\n"
             "  aiorchestra setup-labels owner/repo\n"
             "  aiorchestra setup-labels owner/repo owner/other-repo --dry-run"
@@ -245,21 +293,11 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument(
         "repos",
         nargs="+",
-        help="GitHub repos (owner/repo) to create labels in",
+        metavar="OWNER/REPO",
+        help="One or more GitHub repos to create labels in",
     )
     setup.add_argument("--dry-run", action="store_true", help="Show what would be created")
-    setup.add_argument(
-        "--verbose",
-        "-v",
-        action="count",
-        default=0,
-        help="Verbosity: -v INFO, -vv DEBUG, -vvv firehose",
-    )
-    setup.add_argument(
-        "--log-file",
-        default=".log/aiorchestra-setup-labels.log",
-        help=("Write logs to this file in addition to stderr. Overrides $AIORCHESTRA_LOG_FILE."),
-    )
+    _add_logging_args(setup, default_log_file=".log/aiorchestra-setup-labels.log")
 
     return parser
 
