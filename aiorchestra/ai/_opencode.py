@@ -18,10 +18,10 @@ class OpenCodeProvider(CLIProvider):
     def _build_command(self, prompt: str) -> list[str]:
         cmd: list[str] = ["opencode", "run"]
 
-        if self._config.get("yes", True):
-            cmd.append("--yes")
+        if self._config.get("dangerously-skip-permissions", True):
+            cmd.append("--dangerously-skip-permissions")
 
-        model = self._config.get("model")
+        model = self._config.get("model", "openai/gpt-5.4")
         if model:
             cmd.extend(["--model", model])
 
