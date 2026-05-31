@@ -6,6 +6,7 @@ import signal
 import sys
 import time
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError, version
 
 from aiorchestra._logging import setup_logging
 from aiorchestra._sentry import init as _init_sentry
@@ -15,6 +16,54 @@ from aiorchestra.pipeline import Pipeline
 from aiorchestra.stages.labels import ensure_labels
 
 log = logging.getLogger(__name__)
+
+
+def _version() -> str:
+    try:
+        return version("aiorchestra")
+    except PackageNotFoundError:  # pragma: no cover - editable/uninstalled checkout
+        return "0.0.0+unknown"
+
+
+_MAIN_DESCRIPTION = """\
+Orchestrate AI coding agents with deterministic shell automation.
+
+AIOrchestra drives GitHub issues through a five-stage pipeline, handing the
+creative work to an AI agent (Claude, Codex, Gemini, Jules, or OpenCode) while
+keeping every shell command, validation, and git operation under deterministic
+control:
+
+  discover  -> read the issue and plan the change
+  implement -> let the AI agent edit the code on a fresh branch
+  validate  -> run the repo's lint/test commands until they pass
+  review    -> have the agent self-review the diff
+  publish   -> commit, push, and open a pull request
+
+Pick a command below and pass -h to it (e.g. `aiorchestra run -h`) for the
+full set of options."""
+
+_MAIN_EPILOG = """\
+examples:
+  # Process every open, labeled issue in one repo, auto-routing each to its agent
+  aiorchestra run --repo owner/repo
+
+  # Work a single issue with a specific agent, previewing the plan first
+  aiorchestra run --repo owner/repo --issue 42 --label claude --dry-run
+
+  # Re-validate and review work already pushed to the branch (no new edits)
+  aiorchestra run --repo owner/repo --issue 42 --review-only
+
+  # Continuously poll a repo for new issues every 2 minutes
+  aiorchestra run --repo owner/repo --watch --poll-interval 120
+
+  # Scan every repo you own for 'aiorchestra'-labeled issues
+  aiorchestra dispatch --owner @me
+
+  # Create the AIOrchestra issue labels in one or more repos
+  aiorchestra setup-labels owner/repo owner/other-repo
+
+Logs stream to stderr; pass -v/-vv/-vvv for more detail or --log-file to tee
+them to a file. See the project README for configuration and agent setup."""
 
 
 def _watch_loop(fn: Callable[[], int], poll_interval: int) -> int:
@@ -51,21 +100,49 @@ def _watch_loop(fn: Callable[[], int], poll_interval: int) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aiorchestra",
-        description="Orchestrate AI coding agents with deterministic shell automation.",
+        description=_MAIN_DESCRIPTION,
+        epilog=_MAIN_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    sub = parser.add_subparsers(dest="command")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_version()}",
+        help="Show the installed AIOrchestra version and exit",
+    )
+    sub = parser.add_subparsers(dest="command", metavar="<command>")
 
-    run = sub.add_parser("run", help="Process issues and drive the AI pipeline")
-    run.add_argument("--repo", required=True, help="GitHub repo (owner/repo)")
+    run = sub.add_parser(
+        "run",
+        help="Process issues and drive the AI pipeline",
+        description=(
+            "Run the full discover -> implement -> validate -> review -> publish "
+            "pipeline against the issues in a single repository."
+        ),
+        epilog=(
+            "examples:\n"
+            "  aiorchestra run --repo owner/repo\n"
+            "  aiorchestra run --repo owner/repo --issue 42 --label claude --dry-run\n"
+            "  aiorchestra run --repo owner/repo --review-only\n"
+            "  aiorchestra run --repo owner/repo --watch --poll-interval 120"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    run.add_argument(
+        "--repo", required=True, metavar="OWNER/REPO", help="GitHub repository to process"
+    )
     run.add_argument(
         "--label",
         default=None,
+        metavar="AGENT",
         help=(
             "Pin a specific agent family (claude, codex, gemini, jules, opencode). "
             "When omitted, each issue is auto-routed to the agent implied by its labels."
         ),
     )
-    run.add_argument("--issue", type=int, default=None, help="Specific issue number")
+    run.add_argument(
+        "--issue", type=int, default=None, metavar="N", help="Process only this issue number"
+    )
     run.add_argument("--config", default=None, help="Path to config YAML")
     run.add_argument(
         "--workspace",
@@ -103,10 +180,22 @@ def build_parser() -> argparse.ArgumentParser:
     dispatch = sub.add_parser(
         "dispatch",
         help="Scan all owned repos for 'aiorchestra'-labeled issues",
+        description=(
+            "Discover every repository owned by --owner, then run the pipeline "
+            "against each one that has open 'aiorchestra'-labeled issues."
+        ),
+        epilog=(
+            "examples:\n"
+            "  aiorchestra dispatch\n"
+            "  aiorchestra dispatch --owner myorg --dry-run\n"
+            "  aiorchestra dispatch --watch --poll-interval 600"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     dispatch.add_argument(
         "--owner",
         default="@me",
+        metavar="OWNER",
         help="GitHub owner to scan (default: @me, i.e. the authenticated user)",
     )
     dispatch.add_argument("--config", default=None, help="Path to config YAML")
@@ -141,6 +230,17 @@ def build_parser() -> argparse.ArgumentParser:
     setup = sub.add_parser(
         "setup-labels",
         help="Create AIOrchestra labels in one or more GitHub repos",
+        description=(
+            "Create the labels AIOrchestra uses to discover and route issues "
+            "(e.g. 'aiorchestra' and the per-agent labels) in each given repo. "
+            "Existing labels are left untouched."
+        ),
+        epilog=(
+            "examples:\n"
+            "  aiorchestra setup-labels owner/repo\n"
+            "  aiorchestra setup-labels owner/repo owner/other-repo --dry-run"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     setup.add_argument(
         "repos",
