@@ -14,11 +14,15 @@ from aiorchestra.ai._agents import (
     provider_for_agent,
     resolve_agent,
 )
+from aiorchestra.ai._aider import AiderProvider
+from aiorchestra.ai._antigravity import AntigravityProvider
 from aiorchestra.ai._base import AIProvider, InvokeResult, _parse_clarification
 from aiorchestra.ai._claude_code import ClaudeCodeProvider
 from aiorchestra.ai._cli import CLIProvider
 from aiorchestra.ai._codex import CodexProvider
+from aiorchestra.ai._cursor import CursorProvider
 from aiorchestra.ai._gemini import GeminiProvider
+from aiorchestra.ai._goose import GooseProvider
 from aiorchestra.ai._jules import JulesProvider
 from aiorchestra.ai._ollama import OllamaProvider
 from aiorchestra.ai._opencode import OpenCodeProvider
@@ -26,11 +30,15 @@ from aiorchestra.ai._registry import create_provider
 
 __all__ = [
     "AIProvider",
+    "AiderProvider",
+    "AntigravityProvider",
     "CLIProvider",
     "ClaudeCodeProvider",
     "CodexProvider",
+    "CursorProvider",
     "DEFAULT_AGENT_FAMILY",
     "GeminiProvider",
+    "GooseProvider",
     "InvokeResult",
     "JulesProvider",
     "KNOWN_AGENTS",
