@@ -52,13 +52,34 @@ def _init_repo(tmp: Path) -> None:
 
 def test_find_existing_pr_returns_url_when_pr_exists(monkeypatch):
     url = "https://github.com/owner/repo/pull/25"
-    monkeypatch.setattr(
-        pub_mod,
-        "run_command",
-        lambda cmd, cwd=None, logger=None: _make_result(stdout=url + "\n"),
-    )
+    commands_run = []
+
+    def fake_run_command(cmd, cwd=None, logger=None):
+        commands_run.append(cmd)
+        return _make_result(stdout=url + "\n")
+
+    monkeypatch.setattr(pub_mod, "run_command", fake_run_command)
 
     assert _find_existing_pr(REPO, BRANCH, REPO_ROOT) == url
+    assert commands_run == [
+        [
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            REPO,
+            "--head",
+            BRANCH,
+            "--state",
+            "open",
+            "--limit",
+            "1",
+            "--json",
+            "url",
+            "--jq",
+            ".[0].url // empty",
+        ]
+    ]
 
 
 def test_find_existing_pr_returns_none_when_no_pr(monkeypatch):
@@ -93,8 +114,8 @@ def test_create_pr_returns_existing_pr_url(monkeypatch):
 
     def fake_run_command(cmd, cwd=None, logger=None):
         commands_run.append(cmd)
-        # First call is _find_existing_pr (gh pr view)
-        if "view" in cmd:
+        # First call is _find_existing_pr (gh pr list)
+        if "list" in cmd:
             return _make_result(stdout=existing_url + "\n")
         # Should never reach gh pr create
         return _make_result(returncode=1, stderr="should not be called")
@@ -112,7 +133,7 @@ def test_create_pr_creates_new_when_none_exists(monkeypatch):
     new_url = "https://github.com/owner/repo/pull/30"
 
     def fake_run_command(cmd, *, cwd=None, check=False, shell=None, logger=None):
-        if "view" in cmd:
+        if "list" in cmd:
             return _make_result(returncode=1, stderr="no pull requests found")
         if "create" in cmd:
             return _make_result(stdout=new_url + "\n")
@@ -251,6 +272,44 @@ def test_create_pr_retries_transient_failure(monkeypatch):
     assert len(calls) == 2
 
 
+def test_create_pr_reuses_existing_after_duplicate_error(monkeypatch):
+    """GitHub duplicate-PR errors should resolve to the existing branch PR."""
+    existing_url = "https://github.com/owner/repo/pull/25"
+    create_calls = []
+    find_calls = []
+
+    def fake_find_existing_pr(repo, branch, repo_root):
+        find_calls.append((repo, branch, repo_root))
+        if len(find_calls) == 1:
+            return None
+        return existing_url
+
+    def fake_run_command_or_fail(cmd, *, error_msg, cwd=None, shell=None, logger=None):
+        create_calls.append(cmd)
+        raise pub_mod.CommandError(
+            "PR creation failed: duplicate",
+            subprocess.CompletedProcess(
+                cmd,
+                1,
+                stdout="",
+                stderr=(
+                    'a pull request for branch "claude/24" into branch "main" '
+                    "already exists:\nhttps://github.com/owner/repo/pull/25"
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(pub_mod, "_build_pr_body", lambda issue, repo_root, repo: "short body")
+    monkeypatch.setattr(pub_mod, "_find_existing_pr", fake_find_existing_pr)
+    monkeypatch.setattr(pub_mod, "run_command_or_fail", fake_run_command_or_fail)
+
+    result = _create_pr(REPO, BRANCH, ISSUE, REPO_ROOT)
+
+    assert result == existing_url
+    assert len(create_calls) == 1
+    assert len(find_calls) == 2
+
+
 def test_create_pr_does_not_retry_body_too_long(monkeypatch):
     """Deterministic content failures should fail immediately."""
     calls = []
@@ -349,7 +408,7 @@ def test_publish_without_pr_url_detects_existing(monkeypatch):
             return _make_result(stdout="abc123 some commit\n")
         if "push" in cmd:
             return _make_result()
-        if "view" in cmd:
+        if "list" in cmd:
             return _make_result(stdout=existing_url + "\n")
         return _make_result()
 
